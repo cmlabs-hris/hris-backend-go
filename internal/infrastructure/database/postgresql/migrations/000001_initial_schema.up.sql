@@ -1,28 +1,10 @@
--- Tipe untuk jenis kontrak kepegawaian
-CREATE TYPE employment_type_enum AS ENUM (
-    'permanent',
-    'probation',
-    'contract',
-    'internship',
-    'freelance'
-);
-
--- Tipe untuk status siklus hidup kepegawaian
-CREATE TYPE employment_status_enum AS ENUM (
-    'probation',
-    'active',
-    'resigned',
-    'terminated'
-);
-
-CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'LOGIN_SUCCESS', 'LOGIN_FAIL');
-
 -- Mengelola setiap perusahaan yang menjadi klien
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(255) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
 -- Mengelola akun pengguna untuk login
@@ -34,7 +16,12 @@ CREATE TABLE users (
     is_admin BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(company_id, email)
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
+    UNIQUE(company_id, email),
+    CONSTRAINT chk_password_hash_length CHECK (char_length(password_hash) >= 8),
+    CONSTRAINT chk_email_format CHECK (
+        email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+    )
 );
 
 -- Tabel hierarkis untuk struktur organisasi (Departemen, Divisi, dll.)
@@ -51,6 +38,7 @@ CREATE TABLE positions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     unit_id UUID NOT NULL REFERENCES organization_units(id), -- Merujuk ke unit organisasi
+    name VARCHAR(100) NOT NULL,
     UNIQUE(company_id, name)
 );
 
@@ -59,8 +47,9 @@ CREATE TABLE grades (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    level INT,
-    UNIQUE(company_id, name)
+    level SMALLINT,
+    UNIQUE(company_id, name),
+    CONSTRAINT chk_grade_level_positive CHECK (level IS NULL OR level > 0)
 );
 
 -- Tabel master untuk cabang perusahaan
@@ -72,20 +61,49 @@ CREATE TABLE branches (
     UNIQUE(company_id, name)
 );
 
+
+-- Tipe untuk jenis kontrak kepegawaian
+CREATE TYPE employment_type_enum AS ENUM (
+    'permanent',
+    'probation',
+    'contract',
+    'internship',
+    'freelance'
+);
+
+-- Tipe untuk status siklus hidup kepegawaian
+CREATE TYPE employment_status_enum AS ENUM (
+    'active',
+    'resigned',
+    'terminated'
+);
+
+
+-- Tabel utama untuk template jadwal kerja
+CREATE TABLE work_schedules (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    company_id UUID NOT NULL REFERENCES companies(id),
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('WFO', 'WFA', 'Hybrid')), -- 'WFO', 'WFA', 'Hybrid'
+    UNIQUE(company_id, name)
+);
+
 -- Tabel utama karyawan
 CREATE TABLE employees (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     company_id UUID NOT NULL REFERENCES companies(id),
     work_schedule_id UUID REFERENCES work_schedules(id), -- Jadwal default
-    position_id UUID REFERENCES positions(id),
+    position_id UUID NOT NULL REFERENCES positions(id),
     grade_id UUID REFERENCES grades(id),
     branch_id UUID REFERENCES branches(id),
-    
+
     -- Data Personal & Kepegawaian
+    employee_code VARCHAR(50),
     full_name VARCHAR(255) NOT NULL,
-    nik VARCHAR(16) UNIQUE,
-    phone_number VARCHAR(20),
+    nik VARCHAR(16) NOT NULL,
+    gender VARCHAR(10) CHECK (gender IN ('Male', 'Female')), -- Gender must be either Male or Female
+    phone_number VARCHAR(13) NOT NULL,
     address TEXT,
     place_of_birth VARCHAR(100),
     dob DATE,
@@ -93,40 +111,41 @@ CREATE TABLE employees (
     education VARCHAR(50),
     hire_date DATE NOT NULL,
     resignation_date DATE,
-    employment_type employment_type_enum,
-    employment_status employment_status_enum NOT NULL DEFAULT 'probation',
-    
+    employment_type employment_type_enum NOT NULL,
+    employment_status employment_status_enum NOT NULL DEFAULT 'active',
+
     -- Informasi Bank
     bank_name VARCHAR(50) NOT NULL,
     bank_account_holder_name VARCHAR(255),
     bank_account_number VARCHAR(50) NOT NULL,
-    
+
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
     deleted_at TIMESTAMPTZ,
-    UNIQUE(company_id, nik)
-);
-
--- Tabel utama untuk template jadwal kerja
-CREATE TABLE work_schedules (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    company_id UUID NOT NULL REFERENCES companies(id),
-    name VARCHAR(255) NOT NULL,
-    type VARCHAR(20) NOT NULL, -- 'WFO', 'WFA', 'Hybrid'
-    UNIQUE(company_id, name)
-);
+    UNIQUE(company_id, nik),
+    UNIQUE(company_id, employee_code),
+    CONSTRAINT chk_nik_length CHECK (char_length(nik) = 16 AND nik <> ''),
+    CONSTRAINT chk_phone_number_length CHECK (char_length(phone_number) >= 10 AND char_length(phone_number) <= 13)
+    );
 
 -- Detail jam kerja untuk setiap template jadwal
 CREATE TABLE work_schedule_times (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     work_schedule_id UUID NOT NULL REFERENCES work_schedules(id) ON DELETE CASCADE,
-    day_of_week INT NOT NULL, -- 1=Senin, ..., 7=Minggu
+    day_of_week SMALLINT NOT NULL, -- 1=Senin, ..., 7=Minggu
     clock_in_time TIME NOT NULL,
     break_start_time TIME,
     break_end_time TIME,
     clock_out_time TIME NOT NULL,
-    location_type VARCHAR(10) NOT NULL DEFAULT 'WFO'
+    location_type VARCHAR(10) NOT NULL DEFAULT 'WFO',
+    CONSTRAINT chk_clock_out_after_clock_in CHECK (clock_out_time > clock_in_time),
+    CONSTRAINT chk_break_start_after_clock_in CHECK (break_start_time IS NULL OR break_start_time >= clock_in_time),
+    CONSTRAINT chk_break_end_required_if_break_start CHECK (
+        break_start_time IS NULL OR break_end_time IS NOT NULL
+    ),
+    CONSTRAINT chk_location_type CHECK (location_type IN ('WFO', 'WFA', 'Hybrid'))
 );
 
 -- Tabel untuk lokasi WFO
@@ -147,32 +166,6 @@ CREATE TABLE employee_schedule_assignments (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL
 );
-
--- Tabel rekap absensi harian
-CREATE TABLE attendances (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    employee_id UUID NOT NULL REFERENCES employees(id),
-    date DATE NOT NULL,
-    work_schedule_time_id UUID REFERENCES work_schedule_times(id),
-    actual_location_type VARCHAR(10),
-    clock_in TIMESTAMPTZ,
-    clock_out TIMESTAMPTZ,
-    work_hours_in_minutes INT,
-    clock_in_latitude DOUBLE PRECISION,
-    clock_in_longitude DOUBLE PRECISI~ON,
-    clock_in_proof_url TEXT,
-    clock_out_latitude DOUBLE PRECISION,
-    clock_out_longitude DOUBLE PRECISION,
-    clock_out_proof_url TEXT,
-    status VARCHAR(50) NOT NULL,
-    approved_by UUID REFERENCES users(id),
-    approved_at TIMESTAMPTZ,
-    rejection_reason TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(employee_id, date)
-);
-
 -- Tabel master untuk jenis cuti
 CREATE TABLE leave_types (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -182,16 +175,50 @@ CREATE TABLE leave_types (
     UNIQUE(company_id, name)
 );
 
+-- Tabel rekap absensi harian
+CREATE TABLE attendances (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    employee_id UUID NOT NULL REFERENCES employees(id),
+    date DATE NOT NULL,
+    work_schedule_time_id UUID REFERENCES work_schedule_times(id),
+    actual_location_type VARCHAR(10) NOT NULL,
+    clock_in TIMESTAMPTZ,
+    clock_out TIMESTAMPTZ,
+    work_hours_in_minutes SMALLINT,
+    clock_in_latitude DOUBLE PRECISION,
+    clock_in_longitude DOUBLE PRECISION,
+    clock_in_proof_url TEXT,
+    clock_out_latitude DOUBLE PRECISION,
+    clock_out_longitude DOUBLE PRECISION,
+    clock_out_proof_url TEXT,
+    status VARCHAR(50) NOT NULL,
+    company_id UUID NOT NULL REFERENCES companies(id),
+    approved_by UUID REFERENCES users(id),
+    approved_at TIMESTAMPTZ,
+    rejection_reason TEXT,
+    leave_type_id UUID REFERENCES leave_types(id), -- Referensi jika status 'leave'
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
+    CONSTRAINT chk_clock_out_after_clock_in CHECK (clock_out IS NULL OR clock_in IS NULL OR clock_out >= clock_in),
+    CONSTRAINT chk_work_hours_non_negative CHECK (work_hours_in_minutes IS NULL OR work_hours_in_minutes >= 0),
+    UNIQUE(employee_id, date),
+    CONSTRAINT chk_actual_location_type CHECK (actual_location_type IN ('WFO', 'WFA', 'Hybrid'))
+);
+
 -- Menyimpan jatah cuti setiap karyawan per periode
 CREATE TABLE leave_quotas (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id),
     leave_type_id UUID NOT NULL REFERENCES leave_types(id),
-    year INT NOT NULL,
-    total_quota INT NOT NULL,
-    taken_quota INT NOT NULL DEFAULT 0,
+    year SMALLINT NOT NULL,
+    total_quota SMALLINT NOT NULL,
+    taken_quota SMALLINT NOT NULL DEFAULT 0,
     UNIQUE(employee_id, leave_type_id, year)
 );
+
+-- Enum untuk status pengajuan cuti
+CREATE TYPE leave_request_status_enum AS ENUM ('waiting_approval', 'approved', 'rejected');
 
 -- Mencatat semua transaksi pengajuan cuti
 CREATE TABLE leave_requests (
@@ -201,10 +228,11 @@ CREATE TABLE leave_requests (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     reason TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    status leave_request_status_enum NOT NULL DEFAULT 'waiting_approval',
     attachment_url TEXT,
     approved_by UUID REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_end_date_not_before_start_date CHECK (end_date >= start_date)
 );
 
 -- Tabel master untuk jenis dokumen
@@ -236,7 +264,8 @@ CREATE TABLE employee_documents (
     issue_date DATE,
     expiry_date DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
 CREATE TABLE employee_job_history (
@@ -248,12 +277,13 @@ CREATE TABLE employee_job_history (
     work_schedule_id UUID REFERENCES work_schedules(id),
     employment_type employment_type_enum,
     employment_status employment_status_enum,
-    salary BIGINT,
     start_date DATE NOT NULL,
     end_date DATE,
-    change_reason TEXT,
+    change_reason TEXT, -- 'Promosi Tahunan', 'Mutasi Antar Cabang', dll.
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'LOGIN_SUCCESS', 'LOGIN_FAIL');
 
 CREATE TABLE audit_trails (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -284,6 +314,7 @@ CREATE INDEX idx_employees_grade_id ON employees(grade_id);
 CREATE INDEX idx_employees_branch_id ON employees(branch_id);
 CREATE INDEX idx_attendances_employee_id ON attendances(employee_id);
 CREATE INDEX idx_attendances_date ON attendances(date);
+CREATE INDEX idx_attendances_employee_date ON attendances(employee_id, date);
 CREATE INDEX idx_leave_requests_employee_id ON leave_requests(employee_id);
 CREATE INDEX idx_leave_requests_status ON leave_requests(status);
 CREATE INDEX idx_employee_documents_employee_id ON employee_documents(employee_id);
@@ -295,11 +326,3 @@ CREATE INDEX idx_employee_job_history_work_schedule_id ON employee_job_history(w
 -- Index untuk mempercepat query pencarian log
 CREATE INDEX idx_audit_trails_record ON audit_trails (table_name, record_id);
 CREATE INDEX idx_audit_trails_user ON audit_trails (user_id);
-
--- Constraint tambahan untuk validasi data
-ALTER TABLE employees ADD CONSTRAINT chk_nik_length CHECK (char_length(nik) >= 8);
-ALTER TABLE employees ADD CONSTRAINT chk_phone_number_length CHECK (char_length(phone_number) >= 10);
-ALTER TABLE work_schedules ADD CONSTRAINT chk_type CHECK (type IN ('WFO', 'WFA', 'Hybrid'));
-ALTER TABLE attendances ADD CONSTRAINT chk_status CHECK (status IN ('present', 'absent', 'late', 'leave', 'pending', 'approved', 'rejected'));
-ALTER TABLE leave_requests ADD CONSTRAINT chk_leave_status CHECK (status IN ('pending', 'approved', 'rejected'));
-
