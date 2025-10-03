@@ -1,4 +1,9 @@
--- Mengelola setiap perusahaan yang menjadi klien
+-- =========================
+-- Initial HRIS Database Schema
+-- =========================
+
+-- Table: companies
+-- Stores client companies.
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(255) NOT NULL,
@@ -7,7 +12,8 @@ CREATE TABLE companies (
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
--- Mengelola akun pengguna untuk login
+-- Table: users
+-- User accounts for login, linked to companies.
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -19,49 +25,44 @@ CREATE TABLE users (
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
     UNIQUE(company_id, email),
     CONSTRAINT chk_password_hash_length CHECK (char_length(password_hash) >= 8),
+    -- Basic email format validation
     CONSTRAINT chk_email_format CHECK (
         email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
     )
 );
 
--- Tabel hierarkis untuk struktur organisasi (Departemen, Divisi, dll.)
--- CREATE TABLE organization_units (
---     id UUID PRIMARY KEY DEFAULT uuidv7(),
---     company_id UUID NOT NULL REFERENCES companies(id),
---     parent_id UUID REFERENCES organization_units(id), -- Merujuk ke diri sendiri
---     name VARCHAR(100) NOT NULL,
---     UNIQUE(company_id, name)
--- );
-
--- Tabel master untuk jabatan/posisi
+-- Table: positions
+-- Master table for job positions.
 CREATE TABLE positions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
-    -- unit_id UUID NOT NULL REFERENCES organization_units(id), -- Merujuk ke unit organisasi
+    -- unit_id UUID NOT NULL REFERENCES organization_units(id), -- Uncomment if using organization_units
     name VARCHAR(100) NOT NULL,
     UNIQUE(company_id, name)
 );
 
--- Tabel master untuk level/grade kompensasi
+-- Table: grades
+-- Master table for compensation grades/levels.
 CREATE TABLE grades (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    -- level SMALLINT, -- remove
+    -- level SMALLINT, -- Removed for simplicity
     UNIQUE(company_id, name)
 );
 
--- Tabel master untuk cabang perusahaan
+-- Table: branches
+-- Master table for company branches.
 CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    -- address TEXT, -- remove
+    -- address TEXT, -- Removed for simplicity
     UNIQUE(company_id, name)
 );
 
-
--- Tipe untuk jenis kontrak kepegawaian
+-- Enum: employment_type_enum
+-- Types of employment contracts.
 CREATE TYPE employment_type_enum AS ENUM (
     'permanent',
     'probation',
@@ -70,38 +71,40 @@ CREATE TYPE employment_type_enum AS ENUM (
     'freelance'
 );
 
--- Tipe untuk status siklus hidup kepegawaian
+-- Enum: employment_status_enum
+-- Employee lifecycle status.
 CREATE TYPE employment_status_enum AS ENUM (
     'active',
     'resigned',
     'terminated'
 );
 
-
--- Tabel utama untuk template jadwal kerja
+-- Table: work_schedules
+-- Work schedule templates (WFO/WFA/Hybrid).
 CREATE TABLE work_schedules (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(255) NOT NULL,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('WFO', 'WFA', 'Hybrid')), -- 'WFO', 'WFA', 'Hybrid'
+    type VARCHAR(20) NOT NULL CHECK (type IN ('WFO', 'WFA', 'Hybrid')),
     UNIQUE(company_id, name)
 );
 
--- Tabel utama karyawan
+-- Table: employees
+-- Main employee table, links to user, position, grade, branch, etc.
 CREATE TABLE employees (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     company_id UUID NOT NULL REFERENCES companies(id),
-    work_schedule_id UUID REFERENCES work_schedules(id), -- Jadwal default
+    work_schedule_id UUID REFERENCES work_schedules(id), -- Default schedule
     position_id UUID NOT NULL REFERENCES positions(id),
     grade_id UUID REFERENCES grades(id),
     branch_id UUID REFERENCES branches(id),
 
-    -- Data Personal & Kepegawaian
+    -- Personal & employment data
     employee_code VARCHAR(50),
     full_name VARCHAR(255) NOT NULL,
-    nik VARCHAR(16) NOT NULL,
-    gender VARCHAR(10) CHECK (gender IN ('Male', 'Female')), -- Gender must be either Male or Female
+    nik VARCHAR(16) NOT NULL, -- Indonesian national ID
+    gender VARCHAR(10) CHECK (gender IN ('Male', 'Female')),
     phone_number VARCHAR(13) NOT NULL,
     address TEXT,
     place_of_birth VARCHAR(100),
@@ -116,7 +119,7 @@ CREATE TABLE employees (
     -- Warning Letter (Surat Peringatan)
     warning_letter VARCHAR(10) CHECK (warning_letter IS NULL OR warning_letter IN ('light', 'medium', 'heavy')),
 
-    -- Informasi Bank
+    -- Bank info
     bank_name VARCHAR(50) NOT NULL,
     bank_account_holder_name VARCHAR(255),
     bank_account_number VARCHAR(50) NOT NULL,
@@ -132,11 +135,12 @@ CREATE TABLE employees (
     CONSTRAINT chk_phone_number_length CHECK (char_length(phone_number) >= 10 AND char_length(phone_number) <= 13)
 );
 
--- Detail jam kerja untuk setiap template jadwal
+-- Table: work_schedule_times
+-- Details of work hours for each schedule template.
 CREATE TABLE work_schedule_times (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     work_schedule_id UUID NOT NULL REFERENCES work_schedules(id) ON DELETE CASCADE,
-    day_of_week SMALLINT NOT NULL, -- 1=Senin, ..., 7=Minggu
+    day_of_week SMALLINT NOT NULL, -- 1=Monday, ..., 7=Sunday
     clock_in_time TIME NOT NULL,
     break_start_time TIME,
     break_end_time TIME,
@@ -150,7 +154,8 @@ CREATE TABLE work_schedule_times (
     CONSTRAINT chk_location_type CHECK (location_type IN ('WFO', 'WFA', 'Hybrid'))
 );
 
--- Tabel untuk lokasi WFO
+-- Table: work_schedule_locations
+-- Locations for WFO schedules.
 CREATE TABLE work_schedule_locations (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     work_schedule_id UUID NOT NULL REFERENCES work_schedules(id) ON DELETE CASCADE,
@@ -160,7 +165,8 @@ CREATE TABLE work_schedule_locations (
     radius_meters INT NOT NULL
 );
 
--- (Opsional) Untuk rotasi shift
+-- Table: employee_schedule_assignments
+-- (Optional) For shift rotation assignments.
 CREATE TABLE employee_schedule_assignments (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id),
@@ -168,7 +174,9 @@ CREATE TABLE employee_schedule_assignments (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL
 );
--- Tabel master untuk jenis cuti
+
+-- Table: leave_types
+-- Master table for leave types.
 CREATE TABLE leave_types (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
@@ -177,7 +185,8 @@ CREATE TABLE leave_types (
     UNIQUE(company_id, name)
 );
 
--- Tabel rekap absensi harian
+-- Table: attendances
+-- Daily attendance records.
 CREATE TABLE attendances (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id),
@@ -198,7 +207,7 @@ CREATE TABLE attendances (
     approved_by UUID REFERENCES users(id),
     approved_at TIMESTAMPTZ,
     rejection_reason TEXT,
-    leave_type_id UUID REFERENCES leave_types(id), -- Referensi jika status 'leave'
+    leave_type_id UUID REFERENCES leave_types(id), -- Reference if status is 'leave'
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
@@ -208,7 +217,8 @@ CREATE TABLE attendances (
     CONSTRAINT chk_actual_location_type CHECK (actual_location_type IN ('WFO', 'WFA', 'Hybrid'))
 );
 
--- Menyimpan jatah cuti setiap karyawan per periode
+-- Table: leave_quotas
+-- Leave quota per employee per year/type.
 CREATE TABLE leave_quotas (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id),
@@ -219,10 +229,12 @@ CREATE TABLE leave_quotas (
     UNIQUE(employee_id, leave_type_id, year)
 );
 
--- Enum untuk status pengajuan cuti
+-- Enum: leave_request_status_enum
+-- Status for leave requests.
 CREATE TYPE leave_request_status_enum AS ENUM ('waiting_approval', 'approved', 'rejected');
 
--- Mencatat semua transaksi pengajuan cuti
+-- Table: leave_requests
+-- Leave request transactions.
 CREATE TABLE leave_requests (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id),
@@ -237,7 +249,8 @@ CREATE TABLE leave_requests (
     CONSTRAINT chk_end_date_not_before_start_date CHECK (end_date >= start_date)
 );
 
--- Tabel master untuk jenis dokumen
+-- Table: document_types
+-- Master table for document types.
 CREATE TABLE document_types (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
@@ -246,16 +259,18 @@ CREATE TABLE document_types (
     UNIQUE(company_id, name)
 );
 
--- (Opsional) Untuk membuat dokumen dari template
+-- Table: document_templates
+-- (Optional) Document templates for generation.
 CREATE TABLE document_templates (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     document_type_id UUID NOT NULL REFERENCES document_types(id),
     name VARCHAR(255) NOT NULL,
-    content TEXT NOT NULL -- Konten template (misal: HTML)
+    content TEXT NOT NULL -- Template content (e.g., HTML)
 );
 
--- Menyimpan semua dokumen milik karyawan (di-upload atau di-generate)
+-- Table: employee_documents
+-- Stores employee documents (uploaded/generated).
 CREATE TABLE employee_documents (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -270,6 +285,8 @@ CREATE TABLE employee_documents (
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
+-- Table: employee_job_history
+-- Tracks employee job changes (promotion, transfer, etc.).
 CREATE TABLE employee_job_history (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
@@ -282,33 +299,40 @@ CREATE TABLE employee_job_history (
     warning_letter VARCHAR(10),
     start_date DATE NOT NULL,
     end_date DATE,
-    change_reason TEXT, -- 'Promosi Tahunan', 'Mutasi Antar Cabang', dll.
+    change_reason TEXT, -- e.g., "Annual Promotion", "Branch Transfer"
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Enum: audit_action
+-- Actions for audit trail.
 CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'LOGIN_SUCCESS', 'LOGIN_FAIL');
 
+-- Table: audit_trails
+-- Logs all important actions for auditing.
 CREATE TABLE audit_trails (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID REFERENCES users(id), -- Siapa yang melakukan aksi (bisa NULL jika aksi dari sistem)
-    action audit_action NOT NULL, -- Aksi yang dilakukan (CREATE, UPDATE, APPROVE, etc.)
+    user_id UUID REFERENCES users(id), -- Actor (can be NULL for system actions)
+    action audit_action NOT NULL, -- Action performed
     
-    table_name VARCHAR(255), -- Nama tabel yang terpengaruh, e.g., 'attendances'
-    record_id UUID, -- ID dari baris data yang terpengaruh
+    table_name VARCHAR(255), -- Affected table name
+    record_id UUID, -- Affected record ID
     
-    -- Menyimpan perubahan dalam format JSONB agar fleksibel
-    old_value JSONB, -- Data sebelum diubah
-    new_value JSONB, -- Data setelah diubah
+    -- Change details in JSONB for flexibility
+    old_value JSONB, -- Data before change
+    new_value JSONB, -- Data after change
     
-    description TEXT, -- Deskripsi tambahan, e.g., "User approved attendance"
-    ip_address VARCHAR(45), -- IP address dari mana aksi dilakukan
+    description TEXT, -- Additional info, e.g., "User approved attendance"
+    ip_address VARCHAR(45), -- Source IP address
     user_agent TEXT, -- Browser/device info
     
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- =========================
+-- Indexes for Performance
+-- =========================
 
--- Index untuk kolom yang sering digunakan (foreign key, pencarian, filter)
+-- Frequently used columns for filtering/searching
 CREATE INDEX idx_users_company_id ON users(company_id);
 CREATE INDEX idx_employees_company_id ON employees(company_id);
 CREATE INDEX idx_employees_user_id ON employees(user_id);
@@ -326,6 +350,9 @@ CREATE INDEX idx_employee_job_history_position_id ON employee_job_history(positi
 CREATE INDEX idx_employee_job_history_grade_id ON employee_job_history(grade_id);
 CREATE INDEX idx_employee_job_history_branch_id ON employee_job_history(branch_id);
 CREATE INDEX idx_employee_job_history_work_schedule_id ON employee_job_history(work_schedule_id);
--- Index untuk mempercepat query pencarian log
+
+-- Indexes for audit trail queries
 CREATE INDEX idx_audit_trails_record ON audit_trails (table_name, record_id);
 CREATE INDEX idx_audit_trails_user ON audit_trails (user_id);
+
+-- End of schema
