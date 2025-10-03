@@ -25,19 +25,19 @@ CREATE TABLE users (
 );
 
 -- Tabel hierarkis untuk struktur organisasi (Departemen, Divisi, dll.)
-CREATE TABLE organization_units (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    company_id UUID NOT NULL REFERENCES companies(id),
-    parent_id UUID REFERENCES organization_units(id), -- Merujuk ke diri sendiri
-    name VARCHAR(100) NOT NULL,
-    UNIQUE(company_id, name)
-);
+-- CREATE TABLE organization_units (
+--     id UUID PRIMARY KEY DEFAULT uuidv7(),
+--     company_id UUID NOT NULL REFERENCES companies(id),
+--     parent_id UUID REFERENCES organization_units(id), -- Merujuk ke diri sendiri
+--     name VARCHAR(100) NOT NULL,
+--     UNIQUE(company_id, name)
+-- );
 
 -- Tabel master untuk jabatan/posisi
 CREATE TABLE positions (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
-    unit_id UUID NOT NULL REFERENCES organization_units(id), -- Merujuk ke unit organisasi
+    -- unit_id UUID NOT NULL REFERENCES organization_units(id), -- Merujuk ke unit organisasi
     name VARCHAR(100) NOT NULL,
     UNIQUE(company_id, name)
 );
@@ -47,9 +47,8 @@ CREATE TABLE grades (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    level SMALLINT,
-    UNIQUE(company_id, name),
-    CONSTRAINT chk_grade_level_positive CHECK (level IS NULL OR level > 0)
+    -- level SMALLINT, -- remove
+    UNIQUE(company_id, name)
 );
 
 -- Tabel master untuk cabang perusahaan
@@ -57,7 +56,7 @@ CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    address TEXT,
+    -- address TEXT, -- remove
     UNIQUE(company_id, name)
 );
 
@@ -114,6 +113,9 @@ CREATE TABLE employees (
     employment_type employment_type_enum NOT NULL,
     employment_status employment_status_enum NOT NULL DEFAULT 'active',
 
+    -- Warning Letter (Surat Peringatan)
+    warning_letter VARCHAR(10) CHECK (warning_letter IS NULL OR warning_letter IN ('light', 'medium', 'heavy')),
+
     -- Informasi Bank
     bank_name VARCHAR(50) NOT NULL,
     bank_account_holder_name VARCHAR(255),
@@ -128,7 +130,7 @@ CREATE TABLE employees (
     UNIQUE(company_id, employee_code),
     CONSTRAINT chk_nik_length CHECK (char_length(nik) = 16 AND nik <> ''),
     CONSTRAINT chk_phone_number_length CHECK (char_length(phone_number) >= 10 AND char_length(phone_number) <= 13)
-    );
+);
 
 -- Detail jam kerja untuk setiap template jadwal
 CREATE TABLE work_schedule_times (
@@ -277,6 +279,7 @@ CREATE TABLE employee_job_history (
     work_schedule_id UUID REFERENCES work_schedules(id),
     employment_type employment_type_enum,
     employment_status employment_status_enum,
+    warning_letter VARCHAR(10),
     start_date DATE NOT NULL,
     end_date DATE,
     change_reason TEXT, -- 'Promosi Tahunan', 'Mutasi Antar Cabang', dll.
