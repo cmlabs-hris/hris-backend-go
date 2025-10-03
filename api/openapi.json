@@ -11,17 +11,31 @@
         }
     ],
     "tags": [
-        { "name": "Auth", "description": "Authentication endpoints" },
-        { "name": "Companies", "description": "Company management endpoints" },
-        { "name": "Users", "description": "User management endpoints" },
-        { "name": "Employees", "description": "Employee management endpoints" }
+        {
+            "name": "Auth",
+            "description": "Authentication endpoints"
+        },
+        {
+            "name": "Companies",
+            "description": "Company management endpoints"
+        },
+        {
+            "name": "Users",
+            "description": "User management endpoints"
+        },
+        {
+            "name": "Employees",
+            "description": "Employee management endpoints"
+        }
     ],
     "paths": {
-        "/auth/login": {
+        "/auth/register": {
             "post": {
-                "tags": ["Auth"],
-                "summary": "Login",
-                "description": "Authenticate user and return token.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Register trial admin",
+                "description": "Register a trial admin account.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -29,182 +43,593 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "username": { "type": "string" },
-                                    "password": { "type": "string" }
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    }
                                 },
-                                "required": ["username", "password"]
+                                "required": [
+                                    "email",
+                                    "password"
+                                ]
                             }
                         }
                     }
                 },
                 "responses": {
-                    "200": { "description": "Login successful" },
-                    "401": { "description": "Invalid credentials" }
+                    "201": {
+                        "description": "Admin registered"
+                    },
+                    "400": {
+                        "description": "Invalid input"
+                    }
                 }
             }
         },
-        "/auth/logout": {
+        "/auth/login": {
             "post": {
-                "tags": ["Auth"],
-                "summary": "Logout",
-                "description": "Logout user and invalidate token.",
+            "tags": [
+                "Auth"
+            ],
+            "summary": "Login",
+            "description": "Authenticate user and return token.",
+            "requestBody": {
+                "required": true,
+                "content": {
+                "application/json": {
+                    "schema": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                        "type": "string"
+                        },
+                        "password": {
+                        "type": "string"
+                        }
+                    },
+                    "required": [
+                        "username",
+                        "password"
+                    ]
+                    }
+                }
+                }
+            },
+            "responses": {
+                "200": {
+                "description": "Login successful",
+                "content": {
+                    "application/json": {
+                    "schema": {
+                        "$ref": "#/components/schemas/AuthResponse"
+                    }
+                    }
+                }
+                },
+                "401": {
+                "description": "Invalid credentials"
+                }
+            }
+            }
+        },
+        "/auth/login/employee-code": {
+            "post": {
+            "tags": [
+                "Auth"
+            ],
+            "summary": "Login with employee code",
+            "description": "Authenticate user using employee code.",
+            "requestBody": {
+                "required": true,
+                "content": {
+                "application/json": {
+                    "schema": {
+                    "type": "object",
+                    "properties": {
+                        "employee_code": {
+                        "type": "string"
+                        },
+                        "password": {
+                        "type": "string"
+                        }
+                    },
+                    "required": [
+                        "employee_code",
+                        "password"
+                    ]
+                    }
+                }
+                }
+            },
+            "responses": {
+                "200": {
+                "description": "Login successful",
+                "content": {
+                    "application/json": {
+                    "schema": {
+                        "$ref": "#/components/schemas/AuthResponse"
+                    }
+                    }
+                }
+                },
+                "401": {
+                "description": "Invalid credentials"
+                }
+            }
+            }
+        },
+        "/auth/login/oauth/google": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login with Google OAuth",
+                "description": "Authenticate user using Google OAuth.",
                 "responses": {
-                    "204": { "description": "Logout successful" }
+                    "200": {
+                        "description": "Login successful"
+                    },
+                    "401": {
+                        "description": "Invalid Google token"
+                    }
+                }
+            }
+        },
+        "/auth/oauth/callback/google": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Google OAuth callback",
+                "description": "Callback endpoint for Google OAuth authentication.",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Authorization code from Google"
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "State parameter for CSRF protection"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OAuth callback successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid OAuth callback parameters"
+                    },
+                    "401": {
+                        "description": "Authentication failed"
+                    }
                 }
             }
         },
         "/auth/refresh": {
             "post": {
-                "tags": ["Auth"],
+                "tags": [
+                    "Auth"
+                ],
                 "summary": "Refresh token",
                 "description": "Refresh authentication token.",
                 "responses": {
-                    "200": { "description": "Token refreshed" },
-                    "401": { "description": "Invalid refresh token" }
+                    "200": {
+                        "description": "Token refreshed"
+                    },
+                    "401": {
+                        "description": "Invalid refresh token"
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout",
+                "description": "Logout user and invalidate token.",
+                "responses": {
+                    "204": {
+                        "description": "Logout successful"
+                    }
+                }
+            }
+        },
+        "/auth/forgot-password": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Request password reset",
+                "description": "Request a password reset email.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "email": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "email"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Password reset email sent"
+                    },
+                    "400": {
+                        "description": "Invalid email"
+                    }
+                }
+            }
+        },
+        "/auth/verify-email": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Verify email with token",
+                "description": "Verify user email using a token.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "token": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "token"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Email verified"
+                    },
+                    "400": {
+                        "description": "Invalid token"
+                    }
                 }
             }
         },
         "/companies": {
             "get": {
-                "tags": ["Companies"],
+                "tags": [
+                    "Companies"
+                ],
                 "summary": "List companies",
                 "responses": {
-                    "200": { "description": "List of companies" }
+                    "200": {
+                        "description": "List of companies"
+                    }
                 }
             },
             "post": {
-                "tags": ["Companies"],
+                "tags": [
+                    "Companies"
+                ],
                 "summary": "Create company",
                 "responses": {
-                    "201": { "description": "Company created" }
+                    "201": {
+                        "description": "Company created"
+                    }
                 }
             }
         },
         "/companies/{id}": {
             "get": {
-                "tags": ["Companies"],
+                "tags": [
+                    "Companies"
+                ],
                 "summary": "Get company by ID",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "Company details" }
+                    "200": {
+                        "description": "Company details"
+                    }
                 }
             },
             "put": {
-                "tags": ["Companies"],
+                "tags": [
+                    "Companies"
+                ],
                 "summary": "Update company",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "Company updated" }
+                    "200": {
+                        "description": "Company updated"
+                    }
                 }
             },
             "delete": {
-                "tags": ["Companies"],
+                "tags": [
+                    "Companies"
+                ],
                 "summary": "Delete company",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "204": { "description": "Company deleted" }
+                    "204": {
+                        "description": "Company deleted"
+                    }
                 }
             }
         },
         "/users": {
             "get": {
-                "tags": ["Users"],
+                "tags": [
+                    "Users"
+                ],
                 "summary": "List users",
                 "responses": {
-                    "200": { "description": "List of users" }
+                    "200": {
+                        "description": "List of users"
+                    }
                 }
             },
             "post": {
-                "tags": ["Users"],
+                "tags": [
+                    "Users"
+                ],
                 "summary": "Create user",
                 "responses": {
-                    "201": { "description": "User created" }
+                    "201": {
+                        "description": "User created"
+                    }
                 }
             }
         },
         "/users/{id}": {
             "get": {
-                "tags": ["Users"],
+                "tags": [
+                    "Users"
+                ],
                 "summary": "Get user by ID",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "User details" }
+                    "200": {
+                        "description": "User details"
+                    }
                 }
             },
             "put": {
-                "tags": ["Users"],
+                "tags": [
+                    "Users"
+                ],
                 "summary": "Update user",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "User updated" }
+                    "200": {
+                        "description": "User updated"
+                    }
                 }
             },
             "delete": {
-                "tags": ["Users"],
+                "tags": [
+                    "Users"
+                ],
                 "summary": "Delete user",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "204": { "description": "User deleted" }
+                    "204": {
+                        "description": "User deleted"
+                    }
                 }
             }
         },
         "/employees": {
             "get": {
-                "tags": ["Employees"],
+                "tags": [
+                    "Employees"
+                ],
                 "summary": "List employees",
                 "responses": {
-                    "200": { "description": "List of employees" }
+                    "200": {
+                        "description": "List of employees"
+                    }
                 }
             },
             "post": {
-                "tags": ["Employees"],
+                "tags": [
+                    "Employees"
+                ],
                 "summary": "Create employee",
                 "responses": {
-                    "201": { "description": "Employee created" }
+                    "201": {
+                        "description": "Employee created"
+                    }
                 }
             }
         },
         "/employees/{id}": {
             "get": {
-                "tags": ["Employees"],
+                "tags": [
+                    "Employees"
+                ],
                 "summary": "Get employee by ID",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "Employee details" }
+                    "200": {
+                        "description": "Employee details"
+                    }
                 }
             },
             "put": {
-                "tags": ["Employees"],
+                "tags": [
+                    "Employees"
+                ],
                 "summary": "Update employee",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "200": { "description": "Employee updated" }
+                    "200": {
+                        "description": "Employee updated"
+                    }
                 }
             },
             "delete": {
-                "tags": ["Employees"],
+                "tags": [
+                    "Employees"
+                ],
                 "summary": "Delete employee",
                 "parameters": [
-                    { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
                 ],
                 "responses": {
-                    "204": { "description": "Employee deleted" }
+                    "204": {
+                        "description": "Employee deleted"
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AuthResponse": {
+                "type": "object",
+                "properties": {
+                    "access_token": {
+                        "type": "string"
+                    },
+                    "access_token_expires_in": {
+                        "type": "integer"
+                    },
+                    "refresh_token": {
+                        "type": "string"
+                    },
+                    "refresh_token_expires_in": {
+                        "type": "integer"
+                    },
+                    "User": {
+                        "type": "object",
+                        "properties": {
+                            "ID": {
+                                "type": "string"
+                            },
+                            "email": {
+                                "type": "string"
+                            },
+                            "company_id": {
+                                "type": "string"
+                            },
+                            "company_name": {
+                                "type": "string"
+                            },
+                            "is_admin": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
                 }
             }
         }
