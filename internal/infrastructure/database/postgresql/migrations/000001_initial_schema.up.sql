@@ -21,7 +21,7 @@ CREATE TABLE companies (
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
     is_admin BOOLEAN NOT NULL DEFAULT false,
     oauth_provider VARCHAR(50) DEFAULT NULL CHECK (oauth_provider IS NULL OR oauth_provider = 'google'),
@@ -32,7 +32,7 @@ CREATE TABLE users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
-    UNIQUE(company_id, email),
+    -- UNIQUE(company_id, email), 1 Email can only join one Company
     UNIQUE(oauth_provider, oauth_provider_id),
     CONSTRAINT chk_password_hash_length CHECK (char_length(password_hash) >= 8),
     -- Basic email format validation

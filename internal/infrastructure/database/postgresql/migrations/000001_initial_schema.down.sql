@@ -38,6 +38,7 @@ DROP TABLE IF EXISTS branches;
 DROP TABLE IF EXISTS grades;
 DROP TABLE IF EXISTS positions;
 DROP TABLE IF EXISTS organization_units;
+DROP TABLE IF EXISTS refresh_tokens;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS companies;
 
