@@ -34,8 +34,95 @@
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Register trial admin",
-                "description": "Register a trial admin account.",
+                "summary": "Register trial company admin",
+                "description": "Register a trial company admin account.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "company_name": {
+                                        "type": "string"
+                                    },
+                                    "company_username": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    },
+                                    "confirm_password": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "email",
+                                    "password",
+                                    "confirm_password",
+                                    "company_name",
+                                    "company_username"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Trial company admin registered",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthResponse"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Registration failed: one or more fields already exist",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Registration failed: one or more fields already exist"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Password and confirm_password do not match",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Password and confirm_password do not match"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login",
+                "description": "Authenticate user and return token.",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -59,105 +146,92 @@
                     }
                 },
                 "responses": {
-                    "201": {
-                        "description": "Admin registered"
-                    },
-                    "400": {
-                        "description": "Invalid input"
-                    }
-                }
-            }
-        },
-        "/auth/login": {
-            "post": {
-            "tags": [
-                "Auth"
-            ],
-            "summary": "Login",
-            "description": "Authenticate user and return token.",
-            "requestBody": {
-                "required": true,
-                "content": {
-                "application/json": {
-                    "schema": {
-                    "type": "object",
-                    "properties": {
-                        "email": {
-                        "type": "string"
-                        },
-                        "password": {
-                        "type": "string"
+                    "200": {
+                        "description": "Login successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthResponse"
+                                }
+                            }
                         }
                     },
-                    "required": [
-                        "username",
-                        "password"
-                    ]
+                    "401": {
+                        "description": "Invalid credentials",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid credentials"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                }
-            },
-            "responses": {
-                "200": {
-                "description": "Login successful",
-                "content": {
-                    "application/json": {
-                    "schema": {
-                        "$ref": "#/components/schemas/AuthResponse"
-                    }
-                    }
-                }
-                },
-                "401": {
-                "description": "Invalid credentials"
-                }
-            }
             }
         },
         "/auth/login/employee-code": {
             "post": {
-            "tags": [
-                "Auth"
-            ],
-            "summary": "Login with employee code",
-            "description": "Authenticate user using employee code.",
-            "requestBody": {
-                "required": true,
-                "content": {
-                "application/json": {
-                    "schema": {
-                    "type": "object",
-                    "properties": {
-                        "employee_code": {
-                        "type": "string"
-                        },
-                        "password": {
-                        "type": "string"
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login with employee code",
+                "description": "Authenticate user using employee code.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "employee_code": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "employee_code",
+                                    "password"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthResponse"
+                                }
+                            }
                         }
                     },
-                    "required": [
-                        "employee_code",
-                        "password"
-                    ]
+                    "401": {
+                        "description": "Invalid credentials",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid credentials"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                }
-            },
-            "responses": {
-                "200": {
-                "description": "Login successful",
-                "content": {
-                    "application/json": {
-                    "schema": {
-                        "$ref": "#/components/schemas/AuthResponse"
-                    }
-                    }
-                }
-                },
-                "401": {
-                "description": "Invalid credentials"
-                }
-            }
             }
         },
         "/auth/login/oauth/google": {
@@ -169,10 +243,36 @@
                 "description": "Authenticate user using Google OAuth.",
                 "responses": {
                     "200": {
-                        "description": "Login successful"
+                        "description": "Login successful",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Login successful"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     },
                     "401": {
-                        "description": "Invalid Google token"
+                        "description": "Invalid Google token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid Google token"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -216,10 +316,36 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid OAuth callback parameters"
+                        "description": "Invalid OAuth callback parameters",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid OAuth callback parameters"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     },
                     "401": {
-                        "description": "Authentication failed"
+                        "description": "Authentication failed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Authentication failed"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -231,12 +357,62 @@
                 ],
                 "summary": "Refresh token",
                 "description": "Refresh authentication token.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "refresh_token": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "refresh_token"
+                                ]
+                            }
+                        }
+                    }
+                },
                 "responses": {
                     "200": {
-                        "description": "Token refreshed"
+                        "description": "Token refreshed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "access_token": {
+                                            "type": "string"
+                                        },
+                                        "access_token_expires_in": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": [
+                                        "access_token",
+                                        "access_token_expires_in"
+                                    ]
+                                }
+                            }
+                        }
                     },
                     "401": {
-                        "description": "Invalid refresh token"
+                        "description": "Invalid refresh token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Refresh token is invalid or expired"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -251,6 +427,22 @@
                 "responses": {
                     "204": {
                         "description": "Logout successful"
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Unauthorized"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -282,47 +474,83 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Password reset email sent"
-                    },
-                    "400": {
-                        "description": "Invalid email"
+                        "description": "Password reset email sent",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Password reset email sent"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         },
         "/auth/verify-email": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Verify email with token",
-                "description": "Verify user email using a token.",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "token": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "token"
-                                ]
-                            }
+            "tags": [
+                "Auth"
+            ],
+            "summary": "Verify email with token",
+            "description": "Verify user email using a token.",
+            "requestBody": {
+                "required": true,
+                "content": {
+                "application/json": {
+                    "schema": {
+                    "type": "object",
+                    "properties": {
+                        "token": {
+                        "type": "string"
                         }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Email verified"
                     },
-                    "400": {
-                        "description": "Invalid token"
+                    "required": [
+                        "token"
+                    ]
                     }
                 }
+                }
+            },
+            "responses": {
+                "200": {
+                "description": "Email verified",
+                "content": {
+                    "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                        "message": {
+                            "type": "string",
+                            "example": "Email verified"
+                        }
+                        }
+                    }
+                    }
+                }
+                },
+                "400": {
+                "description": "Invalid token",
+                "content": {
+                    "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                        "message": {
+                            "type": "string",
+                            "example": "Invalid token or expired"
+                        }
+                        }
+                    }
+                    }
+                }
+                }
+            }
             }
         },
         "/companies": {
@@ -621,6 +849,10 @@
                             },
                             "company_id": {
                                 "type": "string"
+                            },
+                            "company_username": {
+                                "type": "string",
+                                "description": "Unique identifier for the company, used for login and referencing the company. Related to company_name, which is the display name."
                             },
                             "company_name": {
                                 "type": "string"

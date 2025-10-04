@@ -7,8 +7,12 @@
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(255) NOT NULL,
+    company_username VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_company_username_format CHECK (
+        company_username ~ '^[A-Za-z0-9._-]{3,50}$'
+    ),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
@@ -22,6 +26,9 @@ CREATE TABLE users (
     is_admin BOOLEAN NOT NULL DEFAULT false,
     oauth_provider VARCHAR(50) DEFAULT NULL CHECK (oauth_provider IS NULL OR oauth_provider = 'google'),
     oauth_provider_id VARCHAR(255),
+    email_verified BOOLEAN NOT NULL DEFAULT false,
+    email_verification_token VARCHAR(255),
+    email_verification_sent_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
@@ -32,6 +39,20 @@ CREATE TABLE users (
     CONSTRAINT chk_email_format CHECK (
         email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
     )
+);
+
+-- Store refresh tokens for revocation
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE, -- SHA256 hash of token
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at TIMESTAMPTZ,
+    
+    -- Track device/session
+    user_agent TEXT,
+    ip_address VARCHAR(45)
 );
 
 -- Table: positions
