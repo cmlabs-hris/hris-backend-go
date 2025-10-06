@@ -1,0 +1,99 @@
+package validator
+
+import (
+	"regexp"
+	"strings"
+	"time"
+)
+
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+type ValidationErrors []ValidationError
+
+func (v ValidationErrors) Error() string {
+	var msgs []string
+	for _, err := range v {
+		msgs = append(msgs, err.Field+": "+err.Message)
+	}
+	return strings.Join(msgs, "; ")
+}
+
+func (v ValidationErrors) ToMap() map[string]string {
+	result := make(map[string]string)
+	for _, err := range v {
+		result[err.Field] = err.Message
+	}
+	return result
+}
+
+// IsEmpty checks if a string is empty after trimming whitespace.
+func IsEmpty(s string) bool {
+	return strings.TrimSpace(s) == ""
+}
+
+var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
+
+// Email validation
+func IsValidEmail(email string) bool {
+	return emailRegex.MatchString(email)
+}
+
+// UUIDv7 regex: version 7 (the 15th character must be '7'), all lowercase hex digits.
+var uuidv7Regex = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// UUIDv7 validation
+func IsValidUUID(uuid string) bool {
+	return uuidv7Regex.MatchString(strings.ToLower(uuid))
+}
+
+// Numeric validation
+var numericRegex = regexp.MustCompile(`^[0-9]+$`)
+
+func IsNumeric(s string) bool {
+	return numericRegex.MatchString(s)
+}
+
+// Date validation
+func IsValidDate(dateStr string) (time.Time, bool) {
+	date, err := time.Parse("2006-01-02", dateStr)
+	return date, err == nil
+}
+
+// NIK validation (Indonesian ID)
+func IsValidNIK(nik string) bool {
+	return len(nik) == 16 && IsNumeric(nik)
+}
+
+// Phone number validation
+func IsValidPhoneNumber(phone string) bool {
+	// Remove spaces and dashes
+	phone = strings.ReplaceAll(phone, " ", "")
+	phone = strings.ReplaceAll(phone, "-", "")
+
+	if len(phone) < 10 || len(phone) > 13 {
+		return false
+	}
+
+	// Must start with 08, 62, or +62
+	if strings.HasPrefix(phone, "08") ||
+		strings.HasPrefix(phone, "62") ||
+		strings.HasPrefix(phone, "+62") {
+		cleanPhone := strings.TrimPrefix(strings.TrimPrefix(phone, "+"), "62")
+		return IsNumeric(cleanPhone)
+	}
+
+	return false
+}
+
+// Slice contains check
+func IsInSlice(value string, slice []string) bool {
+	for _, item := range slice {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}

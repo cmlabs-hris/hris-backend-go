@@ -81,7 +81,7 @@
                             }
                         }
                     },
-                    "400": {
+                    "409": {
                         "description": "Registration failed: one or more fields already exist",
                         "content": {
                             "application/json": {
@@ -98,17 +98,11 @@
                         }
                     },
                     "422": {
-                        "description": "Password and confirm_password do not match",
+                        "description": "Validation error",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Password and confirm_password do not match"
-                                        }
-                                    }
+                                    "$ref": "#/components/schemas/ValidationError"
                                 }
                             }
                         }
@@ -171,6 +165,16 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -189,6 +193,9 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
+                                    "company_username": {
+                                        "type": "string"
+                                    },
                                     "employee_code": {
                                         "type": "string"
                                     },
@@ -197,6 +204,7 @@
                                     }
                                 },
                                 "required": [
+                                    "company_username",
                                     "employee_code",
                                     "password"
                                 ]
@@ -227,6 +235,16 @@
                                             "example": "Invalid credentials"
                                         }
                                     }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
                                 }
                             }
                         }
@@ -413,6 +431,16 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -488,69 +516,89 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
+                        }
                     }
                 }
             }
         },
         "/auth/verify-email": {
             "post": {
-            "tags": [
-                "Auth"
-            ],
-            "summary": "Verify email with token",
-            "description": "Verify user email using a token.",
-            "requestBody": {
-                "required": true,
-                "content": {
-                "application/json": {
-                    "schema": {
-                    "type": "object",
-                    "properties": {
-                        "token": {
-                        "type": "string"
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Verify email with token",
+                "description": "Verify user email using a token.",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "token": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "token"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Email verified",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Email verified"
+                                        }
+                                    }
+                                }
+                            }
                         }
                     },
-                    "required": [
-                        "token"
-                    ]
-                    }
-                }
-                }
-            },
-            "responses": {
-                "200": {
-                "description": "Email verified",
-                "content": {
-                    "application/json": {
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                        "message": {
-                            "type": "string",
-                            "example": "Email verified"
+                    "400": {
+                        "description": "Invalid token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Invalid token or expired"
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        }
-                    }
-                    }
-                }
-                },
-                "400": {
-                "description": "Invalid token",
-                "content": {
-                    "application/json": {
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                        "message": {
-                            "type": "string",
-                            "example": "Invalid token or expired"
-                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ValidationError"
+                                }
+                            }
                         }
                     }
-                    }
                 }
-                }
-            }
             }
         },
         "/companies": {
@@ -859,6 +907,35 @@
                             },
                             "is_admin": {
                                 "type": "boolean"
+                            }
+                        }
+                    }
+                }
+            },
+            "ValidationError": {
+                "type": "object",
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "example": false
+                    },
+                    "error": {
+                        "type": "object",
+                        "properties": {
+                            "code": {
+                                "type": "string",
+                                "example": "VALIDATION_ERROR"
+                            },
+                            "message": {
+                                "type": "string",
+                                "example": "Validation failed"
+                            },
+                            "details": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "string"
+                                },
+                                "description": "Field-specific validation error messages"
                             }
                         }
                     }
