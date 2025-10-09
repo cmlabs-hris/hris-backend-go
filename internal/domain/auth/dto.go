@@ -219,3 +219,15 @@ func (r *VerifyEmailRequest) Validate() error {
 
 	return nil
 }
+
+type TokenResponse struct {
+	AccessToken           string `json:"access_token"`
+	AccessTokenExpiresIn  int64  `json:"access_token_expires_in"`
+	RefreshToken          string `json:"refresh_token"`
+	RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"`
+}
+
+type AccessTokenResponse struct {
+	AccessToken          string `json:"access_token"`
+	AccessTokenExpiresIn int64  `json:"access_token_expires_in"`
+}

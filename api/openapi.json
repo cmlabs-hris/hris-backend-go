@@ -885,30 +885,6 @@
                     },
                     "refresh_token_expires_in": {
                         "type": "integer"
-                    },
-                    "User": {
-                        "type": "object",
-                        "properties": {
-                            "ID": {
-                                "type": "string"
-                            },
-                            "email": {
-                                "type": "string"
-                            },
-                            "company_id": {
-                                "type": "string"
-                            },
-                            "company_username": {
-                                "type": "string",
-                                "description": "Unique identifier for the company, used for login and referencing the company. Related to company_name, which is the display name."
-                            },
-                            "company_name": {
-                                "type": "string"
-                            },
-                            "is_admin": {
-                                "type": "boolean"
-                            }
-                        }
                     }
                 }
             },

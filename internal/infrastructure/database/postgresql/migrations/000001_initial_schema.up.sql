@@ -7,11 +7,11 @@
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(255) NOT NULL,
-    company_username VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(255) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_company_username_format CHECK (
-        company_username ~ '^[A-Za-z0-9._-]{3,50}$'
+    CONSTRAINT chk_username_format CHECK (
+        username ~ '^[A-Za-z0-9._-]{3,50}$'
     ),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );

@@ -5,8 +5,10 @@ import (
 	"net/http"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/auth"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
 )
 
@@ -19,8 +21,12 @@ func HandleError(w http.ResponseWriter, err error) {
 		return
 	}
 
-	// Auth domain errors
 	switch {
+	// Security: generic message for registration conflicts
+	case errors.Is(err, user.ErrUserEmailExists), errors.Is(err, company.ErrCompanyUsernameExists):
+		Conflict(w, "Registration failed: one or more fields already exist")
+
+	// Auth domain errors
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		Unauthorized(w, err.Error())
 	case errors.Is(err, auth.ErrTokenExpired):
@@ -33,6 +39,10 @@ func HandleError(w http.ResponseWriter, err error) {
 		NotFound(w, "User not found")
 	case errors.Is(err, auth.ErrCompanyNotFound):
 		NotFound(w, "Company not found")
+	case errors.Is(err, auth.ErrAccountLocked):
+		Forbidden(w, "Account is locked")
+	case errors.Is(err, auth.ErrInvalidToken):
+		Unauthorized(w, "Invalid or expired token")
 
 	// Employee domain errors
 	case errors.Is(err, employee.ErrEmployeeNotFound):
@@ -43,6 +53,18 @@ func HandleError(w http.ResponseWriter, err error) {
 		Conflict(w, "NIK already registered")
 	case errors.Is(err, employee.ErrEmailExists):
 		Conflict(w, "Email already registered in this company")
+	case errors.Is(err, employee.ErrInvalidEmployeeCode):
+		BadRequest(w, "Invalid employee code format", nil)
+	case errors.Is(err, employee.ErrInvalidNIK):
+		BadRequest(w, "NIK must be exactly 16 digits", nil)
+	case errors.Is(err, employee.ErrInvalidPhoneNumber):
+		BadRequest(w, "Phone number must be 10-13 digits", nil)
+	case errors.Is(err, employee.ErrInvalidGender):
+		BadRequest(w, "Gender must be Male or Female", nil)
+	case errors.Is(err, employee.ErrMinimumAge):
+		BadRequest(w, "Employee must be at least 17 years old", nil)
+	case errors.Is(err, employee.ErrFutureDateNotAllowed):
+		BadRequest(w, "Date cannot be in the future", nil)
 
 	// Leave domain errors
 	case errors.Is(err, leave.ErrLeaveRequestNotFound):
@@ -51,6 +73,36 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Insufficient leave quota", nil)
 	case errors.Is(err, leave.ErrLeaveRequestAlreadyProcessed):
 		Conflict(w, "Leave request already processed")
+
+	// User domain errors
+	case errors.Is(err, user.ErrUserNotFound):
+		NotFound(w, "User not found")
+	case errors.Is(err, user.ErrInvalidEmailFormat):
+		BadRequest(w, "Invalid email format", nil)
+	case errors.Is(err, user.ErrInvalidPasswordLength):
+		BadRequest(w, "Password must be at least 8 characters", nil)
+	case errors.Is(err, user.ErrInvalidOAuthProvider):
+		BadRequest(w, "Invalid oauth provider", nil)
+	case errors.Is(err, user.ErrOAuthProviderIDExists):
+		Conflict(w, "OAuth provider id already registered")
+	case errors.Is(err, user.ErrEmailNotVerified):
+		Forbidden(w, "Email not verified")
+	case errors.Is(err, user.ErrEmailVerificationTokenEmpty):
+		BadRequest(w, "Email verification token is empty", nil)
+	case errors.Is(err, user.ErrAdminPrivilegeRequired):
+		Forbidden(w, "Admin privilege required")
+	case errors.Is(err, user.ErrUpdatedAtBeforeCreatedAt):
+		BadRequest(w, "updated_at cannot be before created_at", nil)
+
+	// Company domain errors
+	case errors.Is(err, company.ErrCompanyNotFound):
+		NotFound(w, "Company not found")
+	case errors.Is(err, company.ErrInvalidCompanyUsernameFormat):
+		BadRequest(w, "Invalid company username format", nil)
+	case errors.Is(err, company.ErrInvalidCompanyName):
+		BadRequest(w, "Company name cannot be empty", nil)
+	case errors.Is(err, company.ErrUpdatedAtBeforeCreatedAt):
+		BadRequest(w, "updated_at cannot be before created_at", nil)
 
 	// Default
 	default:

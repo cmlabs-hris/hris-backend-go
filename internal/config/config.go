@@ -5,15 +5,15 @@ import (
 	"log"
 	"os"
 	"strconv"
-	"time"
 
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Database DatabaseConfig
-	JWT      JWTConfig
-	App      AppConfig
+	Database     DatabaseConfig
+	JWT          JWTConfig
+	App          AppConfig
+	OAuth2Google OAuth2GoogleConfig
 }
 
 type DatabaseConfig struct {
@@ -28,8 +28,8 @@ type DatabaseConfig struct {
 // JWTConfig holds JWT configuration
 type JWTConfig struct {
 	Secret            string
-	RefreshExpiration time.Duration
-	AccessExpiration  time.Duration
+	RefreshExpiration string
+	AccessExpiration  string
 }
 
 // AppConfig holds application configuration
@@ -37,6 +37,11 @@ type AppConfig struct {
 	Port     int
 	Env      string
 	LogLevel string
+}
+
+type OAuth2GoogleConfig struct {
+	ClientID     string
+	ClientSecret string
 }
 
 func Load() (*Config, error) {
@@ -93,19 +98,21 @@ func Load() (*Config, error) {
 	}
 
 	// JWT configuration
-	jwtRefreshExpiration, err := time.ParseDuration(getEnv("JWT_REFRESH_EXPIRATION_TIME", "7h"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid JWT_REFRESH_EXPIRATION_TIME: %w", err)
-	}
-	jwtAccessExpiration, err := time.ParseDuration(getEnv("JWT_ACCESS_EXPIRATION_TIME", "1h"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid JWT_ACCESS_EXPIRATION_TIME: %w", err)
-	}
+	jwtRefreshExpiration := getEnv("JWT_REFRESH_EXPIRATION_TIME", "168h")
+	jwtAccessExpiration := getEnv("JWT_ACCESS_EXPIRATION_TIME", "1h")
 
 	config.JWT = JWTConfig{
 		Secret:            getEnv("JWT_SECRET_KEY", ""),
 		RefreshExpiration: jwtRefreshExpiration,
 		AccessExpiration:  jwtAccessExpiration,
+	}
+
+	// OAuth2 Google Configuration
+	GoogleClientID := getEnv("CLIENT_ID", "")
+	GoogleClientSecret := getEnv("CLIENT_SECRET", "")
+	config.OAuth2Google = OAuth2GoogleConfig{
+		ClientID:     GoogleClientID,
+		ClientSecret: GoogleClientSecret,
 	}
 
 	// Session configuration
@@ -134,6 +141,12 @@ func (c *Config) Validate() error {
 	}
 	if c.JWT.Secret == "" {
 		return fmt.Errorf("JWT_SECRET is required")
+	}
+	if c.OAuth2Google.ClientID == "" {
+		return fmt.Errorf("CLIENT_ID is required")
+	}
+	if c.OAuth2Google.ClientSecret == "" {
+		return fmt.Errorf("CLIENT_SECRET is required")
 	}
 	// if c.Session.Secret == "" {
 	// 	return fmt.Errorf("SESSION_SECRET is required")
