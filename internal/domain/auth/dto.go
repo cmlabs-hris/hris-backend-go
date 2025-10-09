@@ -220,6 +220,11 @@ func (r *VerifyEmailRequest) Validate() error {
 	return nil
 }
 
+type SessionTrackingRequest struct {
+	UserAgent string
+	IPAddress string
+}
+
 type TokenResponse struct {
 	AccessToken           string `json:"access_token"`
 	AccessTokenExpiresIn  int64  `json:"access_token_expires_in"`

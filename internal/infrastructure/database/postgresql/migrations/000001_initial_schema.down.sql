@@ -19,21 +19,21 @@ DROP INDEX IF EXISTS idx_employees_user_id;
 DROP INDEX IF EXISTS idx_employees_company_id;
 DROP INDEX IF EXISTS idx_users_company_id;
 
--- Drop tables
+-- Drop tables in dependency order
 DROP TABLE IF EXISTS audit_trails;
 DROP TABLE IF EXISTS employee_job_history;
 DROP TABLE IF EXISTS employee_documents;
 DROP TABLE IF EXISTS document_templates;
-DROP TABLE IF EXISTS document_types;
 DROP TABLE IF EXISTS leave_requests;
 DROP TABLE IF EXISTS leave_quotas;
-DROP TABLE IF EXISTS leave_types;
 DROP TABLE IF EXISTS attendances;
 DROP TABLE IF EXISTS employee_schedule_assignments;
 DROP TABLE IF EXISTS work_schedule_locations;
 DROP TABLE IF EXISTS work_schedule_times;
-DROP TABLE IF EXISTS work_schedules;
 DROP TABLE IF EXISTS employees;
+DROP TABLE IF EXISTS document_types;
+DROP TABLE IF EXISTS leave_types;
+DROP TABLE IF EXISTS work_schedules;
 DROP TABLE IF EXISTS branches;
 DROP TABLE IF EXISTS grades;
 DROP TABLE IF EXISTS positions;

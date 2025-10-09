@@ -34,7 +34,36 @@ func (a *AuthHandlerImpl) ForgotPassword(w http.ResponseWriter, r *http.Request)
 
 // Login implements AuthHandler.
 func (a *AuthHandlerImpl) Login(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+	var loginReq auth.LoginRequest
+
+	// 1. Decode JSON
+	if err := json.NewDecoder(r.Body).Decode(&loginReq); err != nil {
+		slog.Error("Login decode error", "error", err)
+		response.BadRequest(w, "Invalid request format", nil)
+		return
+	}
+
+	// Validate DTO
+	if err := loginReq.Validate(); err != nil {
+		slog.Error("Login validate error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Call service
+	var sessionTrackReq auth.SessionTrackingRequest
+	sessionTrackReq.IPAddress = r.RemoteAddr
+	sessionTrackReq.UserAgent = r.UserAgent()
+	tokenResponse, err := a.authService.Login(r.Context(), loginReq, sessionTrackReq)
+	if err != nil {
+		slog.Error("Login service error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Success response
+	slog.Info("User logged in successfully")
+	response.Created(w, "User logged in successfully", tokenResponse)
 }
 
 // LoginWithEmployeeCode implements AuthHandler.
@@ -65,24 +94,27 @@ func (a *AuthHandlerImpl) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 // Register implements AuthHandler.
 func (a *AuthHandlerImpl) Register(w http.ResponseWriter, r *http.Request) {
-	var req auth.RegisterRequest
+	var registerReq auth.RegisterRequest
 
 	// 1. Decode JSON
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&registerReq); err != nil {
 		slog.Error("Register decode error", "error", err)
 		response.BadRequest(w, "Invalid request format", nil)
 		return
 	}
 
 	// Validate DTO
-	if err := req.Validate(); err != nil {
+	if err := registerReq.Validate(); err != nil {
 		slog.Error("Register validate error", "error", err)
 		response.HandleError(w, err)
 		return
 	}
 
 	// Call service
-	tokenResponse, err := a.authService.Register(r.Context(), req)
+	var sessionTrackReq auth.SessionTrackingRequest
+	sessionTrackReq.IPAddress = r.RemoteAddr
+	sessionTrackReq.UserAgent = r.UserAgent()
+	tokenResponse, err := a.authService.Register(r.Context(), registerReq, sessionTrackReq)
 	if err != nil {
 		slog.Error("Register service error", "error", err)
 		response.HandleError(w, err)

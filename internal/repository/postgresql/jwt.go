@@ -6,11 +6,12 @@ import (
 	"encoding/base64"
 	"time"
 
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/auth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 )
 
 type JWTRepository interface {
-	CreateRefreshToken(ctx context.Context, userID string, token string, expiresAt int64) error
+	CreateRefreshToken(ctx context.Context, userID string, token string, expiresAt int64, sessionReq auth.SessionTrackingRequest) error
 	IsRefreshTokenRevoked(ctx context.Context, token string) (bool, error)
 	RevokeRefreshToken(ctx context.Context, token string) error
 }
@@ -30,14 +31,14 @@ func (j *jwtRepositoryImpl) hashToken(input string) string {
 	return base64.StdEncoding.EncodeToString(hash[:])
 }
 
-func (j *jwtRepositoryImpl) CreateRefreshToken(ctx context.Context, userID string, token string, expiresAt int64) error {
+func (j *jwtRepositoryImpl) CreateRefreshToken(ctx context.Context, userID string, token string, expiresAt int64, sessionReq auth.SessionTrackingRequest) error {
 	q := GetQuerier(ctx, j.db)
 	query := `
-		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-		VALUES ($1, $2, $3)
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at, user_agent, ip_address)
+		VALUES ($1, $2, $3, $4, $5)
 	`
 	tokenHash := j.hashToken(token)
-	_, err := q.Exec(ctx, query, userID, tokenHash, time.Unix(expiresAt, 0).UTC())
+	_, err := q.Exec(ctx, query, userID, tokenHash, time.Unix(expiresAt, 0).UTC(), sessionReq.UserAgent, sessionReq.IPAddress)
 	return err
 }
 

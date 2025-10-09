@@ -8,7 +8,7 @@ import (
 )
 
 type Service interface {
-	GenerateAccessToken(userID, email, companyID, companyUsername string, isAdmin bool) (token string, expiresAt int64, err error)
+	GenerateAccessToken(userID, email, companyID string, isAdmin bool) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
 }
 
@@ -38,14 +38,13 @@ func NewJWTService(secretKey string, accessTokenExpirationTime string, refreshTo
 }
 
 // GenerateAccessToken implements Service.
-func (j *JWTService) GenerateAccessToken(userID string, email string, companyID string, companyUsername string, isAdmin bool) (string, int64, error) {
+func (j *JWTService) GenerateAccessToken(userID string, email string, companyID string, isAdmin bool) (string, int64, error) {
 	accessClaims := map[string]interface{}{
-		"user_id":          userID,
-		"email":            email,
-		"company_id":       companyID,
-		"company_username": companyUsername,
-		"is_admin":         isAdmin,
-		"type":             "access",
+		"user_id":    userID,
+		"email":      email,
+		"company_id": companyID,
+		"is_admin":   isAdmin,
+		"type":       "access",
 	}
 	expireTime, err := time.ParseDuration(j.accessTokenExpirationTime)
 	if err != nil {

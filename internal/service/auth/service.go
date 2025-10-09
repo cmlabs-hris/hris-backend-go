@@ -32,16 +32,16 @@ func NewAuthService(db *database.DB, userRepository user.UserRepository, company
 	}
 }
 
-func (a *AuthServiceImpl) hashPassword(password string) (*string, error) {
+func (a *AuthServiceImpl) hashPassword(password string) (string, error) {
 	if password == "" {
-		return nil, nil
+		return "", nil
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	hashed := string(hash)
-	return &hashed, nil
+	return hashed, nil
 }
 
 // ForgotPassword implements auth.AuthService.
@@ -50,8 +50,55 @@ func (a *AuthServiceImpl) ForgotPassword(ctx context.Context, req auth.RefreshTo
 }
 
 // Login implements auth.AuthService.
-func (a *AuthServiceImpl) Login(ctx context.Context, req auth.LoginRequest) (auth.TokenResponse, error) {
-	panic("unimplemented")
+func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest, sessionTrackReq auth.SessionTrackingRequest) (auth.TokenResponse, error) {
+	var tokenResponse auth.TokenResponse
+
+	userExists, err := a.UserRepository.ExistsByIDOrEmail(ctx, nil, &loginReq.Email)
+	if err != nil {
+		return auth.TokenResponse{}, fmt.Errorf("check user exists: %w", err)
+	}
+	if !userExists {
+		return auth.TokenResponse{}, auth.ErrInvalidCredentials
+	}
+
+	userData, err := a.UserRepository.GetByEmail(ctx, loginReq.Email)
+	if err != nil {
+		return auth.TokenResponse{}, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	hashedPassword, err := a.hashPassword(loginReq.Password)
+	if err != nil {
+		return auth.TokenResponse{}, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	if hashedPassword != *userData.PasswordHash {
+		return auth.TokenResponse{}, auth.ErrInvalidCredentials
+	}
+
+	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
+		txCtx := context.WithValue(ctx, "tx", tx)
+
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
+		if err != nil {
+			return fmt.Errorf("failed to create access token: %w", err)
+		}
+		tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn, err = a.Service.GenerateRefreshToken(userData.ID)
+		if err != nil {
+			return fmt.Errorf("failed to create refresh token: %w", err)
+		}
+
+		err = a.CreateRefreshToken(txCtx, userData.ID, tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn, sessionTrackReq)
+		if err != nil {
+			return fmt.Errorf("failed to save refresh token to database: %w", err)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return auth.TokenResponse{}, err
+	}
+
+	return tokenResponse, nil
 }
 
 // LoginWithEmployeeCode implements auth.AuthService.
@@ -80,13 +127,13 @@ func (a *AuthServiceImpl) RefreshToken(ctx context.Context, req auth.RefreshToke
 }
 
 // Register implements auth.AuthService.
-func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest) (auth.TokenResponse, error) {
+func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.RegisterRequest, sessionTrackReq auth.SessionTrackingRequest) (auth.TokenResponse, error) {
 	var tokenResponse auth.TokenResponse
 	err := postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
 		// Check company already exist or not
-		companyExists, err := a.CompanyRepository.ExistsByIDOrUsername(txCtx, nil, &req.CompanyUsername)
+		companyExists, err := a.CompanyRepository.ExistsByIDOrUsername(txCtx, nil, &registerReq.CompanyUsername)
 		if err != nil {
 			return fmt.Errorf("check company exists: %w", err)
 		}
@@ -94,8 +141,8 @@ func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest
 			return company.ErrCompanyUsernameExists
 		}
 		newCompany := company.Company{
-			Name:     req.CompanyName,
-			Username: req.CompanyUsername,
+			Name:     registerReq.CompanyName,
+			Username: registerReq.CompanyUsername,
 		}
 		newCompany, err = a.CompanyRepository.Create(txCtx, newCompany)
 		if err != nil {
@@ -103,7 +150,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest
 		}
 
 		// Check user already exist or not
-		userExists, err := a.UserRepository.ExistsByIDOrEmail(txCtx, nil, &req.Email)
+		userExists, err := a.UserRepository.ExistsByIDOrEmail(txCtx, nil, &registerReq.Email)
 		if err != nil {
 			return fmt.Errorf("check user exists: %w", err)
 		}
@@ -112,14 +159,14 @@ func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest
 		}
 
 		// Hash the password before storing
-		hashedPassword, err := a.hashPassword(req.Password)
+		hashedPassword, err := a.hashPassword(registerReq.Password)
 		if err != nil {
 			return fmt.Errorf("failed to hash password: %w", err)
 		}
 		newUser := user.User{
 			CompanyID:               newCompany.ID,
-			Email:                   req.Email,
-			PasswordHash:            hashedPassword,
+			Email:                   registerReq.Email,
+			PasswordHash:            &hashedPassword,
 			IsAdmin:                 true,
 			OAuthProvider:           nil,
 			OAuthProviderID:         nil,
@@ -132,7 +179,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest
 			return fmt.Errorf("failed to create user: %w", err)
 		}
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, newCompany.ID, newCompany.Username, newUser.IsAdmin)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, newCompany.ID, newUser.IsAdmin)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -141,7 +188,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, req auth.RegisterRequest
 			return fmt.Errorf("failed to create refresh token: %w", err)
 		}
 
-		err = a.CreateRefreshToken(txCtx, newUser.ID, tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn)
+		err = a.CreateRefreshToken(txCtx, newUser.ID, tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn, sessionTrackReq)
 		if err != nil {
 			return fmt.Errorf("failed to save refresh token to database: %w", err)
 		}
