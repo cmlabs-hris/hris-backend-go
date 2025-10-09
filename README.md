@@ -39,6 +39,14 @@ Edit `.env` and set:
 - JWT secret and expiration times
 - Google OAuth credentials (if using Google login)
 
+**Note:**  
+Before running migrations, make sure you have created the database specified by `DB_NAME` in your `.env` file.  
+For example, in psql:
+
+```sql
+CREATE DATABASE your_db_name;
+```
+
 ### 3. Install Dependencies
 
 ```bash
