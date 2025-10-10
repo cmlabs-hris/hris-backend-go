@@ -8,6 +8,7 @@ CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     name VARCHAR(255) NOT NULL,
     username VARCHAR(50) NOT NULL UNIQUE,
+    address TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_username_format CHECK (
@@ -21,7 +22,7 @@ CREATE TABLE companies (
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL UNIQUE,
+    email VARCHAR(254) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
     is_admin BOOLEAN NOT NULL DEFAULT false,
     oauth_provider VARCHAR(50) DEFAULT NULL CHECK (oauth_provider IS NULL OR oauth_provider = 'google'),
@@ -37,8 +38,10 @@ CREATE TABLE users (
     CONSTRAINT chk_password_hash_length CHECK (char_length(password_hash) >= 8),
     -- Basic email format validation
     CONSTRAINT chk_email_format CHECK (
-        email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
-    )
+            char_length(email) >= 6 AND
+            char_length(email) <= 254 AND
+            email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+        )
 );
 
 -- Store refresh tokens for revocation
@@ -81,7 +84,7 @@ CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    -- address TEXT, -- Removed for simplicity
+    address TEXT, -- Removed for simplicity
     UNIQUE(company_id, name)
 );
 

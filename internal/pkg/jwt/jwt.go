@@ -10,6 +10,7 @@ import (
 type Service interface {
 	GenerateAccessToken(userID, email, companyID string, isAdmin bool) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
+	JWTAuth() *jwtauth.JWTAuth
 }
 
 // type Claims struct {
@@ -26,6 +27,11 @@ type JWTService struct {
 	accessTokenExpirationTime  string
 	refreshTokenExpirationTime string
 	tokenAuth                  *jwtauth.JWTAuth
+}
+
+// JWTAuth implements Service.
+func (j *JWTService) JWTAuth() *jwtauth.JWTAuth {
+	return j.tokenAuth
 }
 
 func NewJWTService(secretKey string, accessTokenExpirationTime string, refreshTokenExpirationTime string) Service {

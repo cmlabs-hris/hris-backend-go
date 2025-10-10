@@ -6,6 +6,7 @@ type Company struct {
 	ID        string
 	Name      string
 	Username  string
+	Address   *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

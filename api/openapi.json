@@ -625,69 +625,42 @@
                 }
             }
         },
-        "/companies/{id}": {
+        "/companies/profile": {
             "get": {
-                "tags": [
-                    "Companies"
-                ],
-                "summary": "Get company by ID",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Company details"
-                    }
+            "tags": [
+                "Companies"
+            ],
+            "summary": "Get current company profile",
+            "description": "Retrieve the profile of the company associated with the authenticated user.",
+            "responses": {
+                "200": {
+                    "description": "Company profile details"
                 }
+            }
             },
             "put": {
-                "tags": [
-                    "Companies"
-                ],
-                "summary": "Update company",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Company updated"
-                    }
+            "tags": [
+                "Companies"
+            ],
+            "summary": "Update company profile of authenticated user",
+            "description": "Update the profile of the company associated with the authenticated user.",
+            "responses": {
+                "200": {
+                    "description": "Company profile updated"
                 }
+            }
             },
             "delete": {
-                "tags": [
-                    "Companies"
-                ],
-                "summary": "Delete company",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Company deleted"
-                    }
+            "tags": [
+                "Companies"
+            ],
+            "summary": "Delete company profile of authenticated user",
+            "description": "Delete the profile of the company associated with the authenticated user.",
+            "responses": {
+                "204": {
+                "description": "Company profile deleted"
                 }
+            }
             }
         },
         "/users": {

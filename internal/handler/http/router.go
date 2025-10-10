@@ -5,12 +5,15 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/middleware"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog/v3"
+	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(authHandler AuthHandler) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -26,28 +29,60 @@ func NewRouter(authHandler AuthHandler) *chi.Mux {
 		Schema: httplog.SchemaECS,
 	}))
 
-	r.Use(middleware.AllowContentEncoding("application/json"))
-	r.Use(middleware.CleanPath)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Heartbeat("/"))
+	r.Use(chiMiddleware.AllowContentEncoding("application/json"))
+	r.Use(chiMiddleware.CleanPath)
+	r.Use(chiMiddleware.Recoverer)
+	r.Use(chiMiddleware.Heartbeat("/"))
 
 	r.Get("/yo", func(w http.ResponseWriter, r *http.Request) {
 		w.Write(([]byte("hello world\n")))
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
-			r.Post("/refresh", func(w http.ResponseWriter, r *http.Request) {})
-			r.Post("/logout", func(w http.ResponseWriter, r *http.Request) {})
-			r.Post("/forgot-password", func(w http.ResponseWriter, r *http.Request) {})
-			r.Post("/verify-email", func(w http.ResponseWriter, r *http.Request) {})
+			r.Post("/refresh", authHandler.RefreshToken)
+			r.Post("/logout", authHandler.Logout)
+			r.Post("/forgot-password", authHandler.ForgotPassword)
+			r.Post("/verify-email", authHandler.VerifyEmail)
+			r.Route("/oauth/callback", func(r chi.Router) {
+				r.Get("/google", authHandler.OAuthCallbackGoogle)
+			})
 
 			r.Route("/login", func(r chi.Router) {
-				r.Post("/", func(w http.ResponseWriter, r *http.Request) {})
-				r.Post("/employee-code", func(w http.ResponseWriter, r *http.Request) {})
+				r.Post("/", authHandler.Login)
+				r.Post("/employee-code", authHandler.LoginWithEmployeeCode)
 				r.Route("/oauth", func(r chi.Router) {
-					r.Get("/google", func(w http.ResponseWriter, r *http.Request) {})
+					r.Get("/google", authHandler.LoginWithGoogle)
+				})
+			})
+
+		})
+
+		// Requires authentication
+		r.Group(func(r chi.Router) {
+			r.Use(jwtauth.Verifier(JWTService.JWTAuth()))
+			r.Use(middleware.AuthRequired(JWTService.JWTAuth()))
+
+			r.Route("/companies", func(r chi.Router) {
+
+				// Admin only
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.AdminOnly)
+					r.Get("/", companyhandler.List)
+					r.Post("/", companyhandler.Create)
+				})
+
+				r.Route("/profile", func(r chi.Router) {
+					r.Get("/", companyhandler.GetByID)
+
+					// Admin only
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.AdminOnly)
+						r.Put("/", companyhandler.Update)
+						r.Delete("/", companyhandler.Delete)
+					})
 				})
 			})
 		})

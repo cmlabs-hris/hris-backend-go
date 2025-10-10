@@ -97,3 +97,10 @@ func IsInSlice(value string, slice []string) bool {
 	}
 	return false
 }
+
+// Username validation: 3-50 chars, A-Z, a-z, 0-9, ., _, -
+var companyUsernameRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{3,50}$`)
+
+func IsValidCompanyUsername(companyUsername string) bool {
+	return companyUsernameRegex.MatchString(companyUsername)
+}

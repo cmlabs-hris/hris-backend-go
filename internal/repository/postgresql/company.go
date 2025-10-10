@@ -2,6 +2,9 @@ package postgresql
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
@@ -9,6 +12,43 @@ import (
 
 type companyRepositoryImpl struct {
 	db *database.DB
+}
+
+// Update implements company.CompanyRepository.
+func (c *companyRepositoryImpl) Update(ctx context.Context, id string, req company.UpdateCompanyRequest) error {
+	q := GetQuerier(ctx, c.db)
+
+	updates := make(map[string]interface{})
+
+	if req.Name != nil {
+		updates["name"] = *req.Name
+	}
+	if req.Address != nil {
+		updates["address"] = *req.Address
+	}
+
+	if len(updates) == 0 {
+		return fmt.Errorf("no updatable fields provided for company update")
+	}
+	updates["updated_at"] = time.Now()
+
+	setClauses := make([]string, 0, len(updates))
+	args := make([]interface{}, 0, len(updates)+1)
+	i := 1
+	for col, val := range updates {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i))
+		args = append(args, val)
+		i++
+	}
+
+	sql := "UPDATE companies SET " + strings.Join(setClauses, ", ") + fmt.Sprintf(" WHERE id = $%d", i)
+	args = append(args, id)
+
+	var updatedID string
+	if err := q.QueryRow(ctx, sql+" RETURNING id", args...).Scan(&updatedID); err != nil {
+		return fmt.Errorf("failed to update company with id %s: %w", id, err)
+	}
+	return nil
 }
 
 func NewCompanyRepository(db *database.DB) company.CompanyRepository {

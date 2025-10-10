@@ -20,10 +20,34 @@ func (r *RegisterRequest) Validate() error {
 			Message: "company_name is required",
 		})
 	}
+	if len(r.CompanyName) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_name",
+			Message: "company_name must not exceed 255 characters",
+		})
+	}
 	if validator.IsEmpty(r.CompanyUsername) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "company_username",
 			Message: "company_username is required",
+		})
+	}
+	if len(r.CompanyUsername) < 3 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username must be at least 3 characters long",
+		})
+	}
+	if len(r.CompanyUsername) > 50 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username must not exceed 50 characters",
+		})
+	}
+	if !validator.IsValidCompanyUsername(r.CompanyUsername) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username may only contain letters, numbers, dots, underscores, and hyphens",
 		})
 	}
 
@@ -33,10 +57,23 @@ func (r *RegisterRequest) Validate() error {
 			Field:   "email",
 			Message: "email is required",
 		})
-	} else if !validator.IsValidEmail(r.Email) {
+	}
+	if len(r.Email) < 6 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "email",
-			Message: "email format is invalid",
+			Message: "email must be at least 6 characters long",
+		})
+	}
+	if len(r.Email) > 254 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must not exceed 254 characters",
+		})
+	}
+	if !validator.IsValidEmail(r.Email) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must be a valid email address (letters, numbers, ., _, %, +, - allowed before @; must contain @; domain must contain letters, numbers, ., -; must end with a dot and at least 2 letters, e.g. user@example.com)",
 		})
 	}
 
@@ -50,6 +87,11 @@ func (r *RegisterRequest) Validate() error {
 		errs = append(errs, validator.ValidationError{
 			Field:   "password",
 			Message: "password must be at least 8 characters long",
+		})
+	} else if len(r.Password) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password must not exceed 255 characters",
 		})
 	}
 	if validator.IsEmpty(r.ConfirmPassword) {
@@ -85,10 +127,23 @@ func (r *LoginRequest) Validate() error {
 			Field:   "email",
 			Message: "email is required",
 		})
-	} else if !validator.IsValidEmail(r.Email) {
+	}
+	if len(r.Email) < 6 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "email",
-			Message: "email format is invalid",
+			Message: "email must be at least 6 characters long",
+		})
+	}
+	if len(r.Email) > 254 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must not exceed 254 characters",
+		})
+	}
+	if !validator.IsValidEmail(r.Email) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must be a valid email address (letters, numbers, ., _, %, +, - allowed before @; must contain @; domain must contain letters, numbers, ., -; must end with a dot and at least 2 letters, e.g. user@example.com)",
 		})
 	}
 
@@ -102,6 +157,11 @@ func (r *LoginRequest) Validate() error {
 		errs = append(errs, validator.ValidationError{
 			Field:   "password",
 			Message: "password must be at least 8 characters long",
+		})
+	} else if len(r.Password) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password must not exceed 255 characters",
 		})
 	}
 
@@ -128,6 +188,24 @@ func (r *LoginEmployeeCodeRequest) Validate() error {
 			Message: "company_username is required",
 		})
 	}
+	if len(r.CompanyUsername) < 3 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username must be at least 3 characters long",
+		})
+	}
+	if len(r.CompanyUsername) > 50 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username must not exceed 50 characters",
+		})
+	}
+	if !validator.IsValidCompanyUsername(r.CompanyUsername) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_username",
+			Message: "company_username may only contain letters, numbers, dots, underscores, and hyphens",
+		})
+	}
 
 	// Password
 	if validator.IsEmpty(r.Password) {
@@ -139,6 +217,11 @@ func (r *LoginEmployeeCodeRequest) Validate() error {
 		errs = append(errs, validator.ValidationError{
 			Field:   "password",
 			Message: "password must be at least 8 characters long",
+		})
+	} else if len(r.Password) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password must not exceed 255 characters",
 		})
 	}
 
@@ -163,6 +246,12 @@ func (r *RefreshTokenRequest) Validate() error {
 			Message: "refresh_token is required",
 		})
 	}
+	if len(r.RefreshToken) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "refresh_token",
+			Message: "refresh_token must not exceed 255 characters",
+		})
+	}
 
 	if len(errs) > 0 {
 		return errs
@@ -184,10 +273,23 @@ func (r *ForgotPasswordRequest) Validate() error {
 			Field:   "email",
 			Message: "email is required",
 		})
-	} else if !validator.IsValidEmail(r.Email) {
+	}
+	if len(r.Email) < 6 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "email",
-			Message: "email format is invalid",
+			Message: "email must be at least 6 characters long",
+		})
+	}
+	if len(r.Email) > 254 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must not exceed 254 characters",
+		})
+	}
+	if !validator.IsValidEmail(r.Email) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "email",
+			Message: "email must be a valid email address (letters, numbers, ., _, %, +, - allowed before @; must contain @; domain must contain letters, numbers, ., -; must end with a dot and at least 2 letters, e.g. user@example.com)",
 		})
 	}
 
@@ -210,6 +312,12 @@ func (r *VerifyEmailRequest) Validate() error {
 		errs = append(errs, validator.ValidationError{
 			Field:   "token",
 			Message: "token is required",
+		})
+	}
+	if len(r.Token) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "token",
+			Message: "token must not exceed 255 characters",
 		})
 	}
 
