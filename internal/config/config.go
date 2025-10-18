@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -42,6 +43,8 @@ type AppConfig struct {
 type OAuth2GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
+	RedirectURL  string
+	Scopes       []string
 }
 
 func Load() (*Config, error) {
@@ -110,9 +113,13 @@ func Load() (*Config, error) {
 	// OAuth2 Google Configuration
 	GoogleClientID := getEnv("CLIENT_ID", "")
 	GoogleClientSecret := getEnv("CLIENT_SECRET", "")
+	GoogleRedirectURL := getEnv("REDIRECT_URL", "")
+	GoogleScopes := getEnvSlice("SCOPES")
 	config.OAuth2Google = OAuth2GoogleConfig{
 		ClientID:     GoogleClientID,
 		ClientSecret: GoogleClientSecret,
+		RedirectURL:  GoogleRedirectURL,
+		Scopes:       GoogleScopes,
 	}
 
 	// Session configuration
@@ -148,6 +155,14 @@ func (c *Config) Validate() error {
 	if c.OAuth2Google.ClientSecret == "" {
 		return fmt.Errorf("CLIENT_SECRET is required")
 	}
+
+	if c.OAuth2Google.RedirectURL == "" {
+		return fmt.Errorf("REDIRECT_URL is required")
+	}
+
+	if len(c.OAuth2Google.Scopes) == 0 {
+		return fmt.Errorf("SCOPES is required")
+	}
 	// if c.Session.Secret == "" {
 	// 	return fmt.Errorf("SESSION_SECRET is required")
 	// }
@@ -171,4 +186,13 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getEnvSlice(env string) []string {
+	value := getEnv(env, "")
+	if value == "" {
+		return []string{}
+	}
+	var result []string = strings.Split(value, ",")
+	return result
 }

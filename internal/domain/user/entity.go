@@ -4,7 +4,7 @@ import "time"
 
 type User struct {
 	ID                      string
-	CompanyID               string
+	CompanyID               *string
 	Email                   string
 	PasswordHash            *string
 	IsAdmin                 bool

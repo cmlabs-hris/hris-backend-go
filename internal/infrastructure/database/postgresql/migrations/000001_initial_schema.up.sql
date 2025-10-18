@@ -21,7 +21,7 @@ CREATE TABLE companies (
 -- User accounts for login, linked to companies.
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     email VARCHAR(254) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
     is_admin BOOLEAN NOT NULL DEFAULT false,
@@ -124,11 +124,11 @@ CREATE TABLE employees (
     company_id UUID NOT NULL REFERENCES companies(id),
     work_schedule_id UUID REFERENCES work_schedules(id), -- Default schedule
     position_id UUID NOT NULL REFERENCES positions(id),
-    grade_id UUID REFERENCES grades(id),
-    branch_id UUID REFERENCES branches(id),
+    grade_id UUID NOT NULL REFERENCES grades(id),
+    branch_id UUID NOT NULL REFERENCES branches(id),
 
     -- Personal & employment data
-    employee_code VARCHAR(50),
+    employee_code VARCHAR(50) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
     nik VARCHAR(16) NOT NULL, -- Indonesian national ID
     gender VARCHAR(10) CHECK (gender IN ('Male', 'Female')),

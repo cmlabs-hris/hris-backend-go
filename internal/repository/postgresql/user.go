@@ -11,6 +11,76 @@ type userRepositoryImpl struct {
 	db *database.DB
 }
 
+// LinkPasswordAccount implements user.UserRepository.
+func (r *userRepositoryImpl) LinkPasswordAccount(ctx context.Context, id string, password string) (user.User, error) {
+	q := GetQuerier(ctx, r.db)
+
+	updateQuery := `
+		UPDATE users
+		SET password_hash = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+				  email_verified, email_verification_token, email_verification_sent_at,
+				  created_at, updated_at
+	`
+
+	var updated user.User
+	err := q.QueryRow(ctx, updateQuery, password, id).Scan(
+		&updated.ID,
+		&updated.CompanyID,
+		&updated.Email,
+		&updated.PasswordHash,
+		&updated.IsAdmin,
+		&updated.OAuthProvider,
+		&updated.OAuthProviderID,
+		&updated.EmailVerified,
+		&updated.EmailVerificationToken,
+		&updated.EmailVerificationSentAt,
+		&updated.CreatedAt,
+		&updated.UpdatedAt,
+	)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	return updated, nil
+}
+
+// LinkGoogleAccount implements user.UserRepository.
+func (r *userRepositoryImpl) LinkGoogleAccount(ctx context.Context, GoogleID string, email string) (user.User, error) {
+	q := GetQuerier(ctx, r.db)
+
+	updateQuery := `
+		UPDATE users
+		SET oauth_provider = $1, oauth_provider_id = $2, updated_at = NOW()
+		WHERE email = $3
+		RETURNING id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+				  email_verified, email_verification_token, email_verification_sent_at,
+				  created_at, updated_at
+	`
+
+	var updated user.User
+	err := q.QueryRow(ctx, updateQuery, "google", GoogleID, email).Scan(
+		&updated.ID,
+		&updated.CompanyID,
+		&updated.Email,
+		&updated.PasswordHash,
+		&updated.IsAdmin,
+		&updated.OAuthProvider,
+		&updated.OAuthProviderID,
+		&updated.EmailVerified,
+		&updated.EmailVerificationToken,
+		&updated.EmailVerificationSentAt,
+		&updated.CreatedAt,
+		&updated.UpdatedAt,
+	)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	return updated, nil
+}
+
 func NewUserRepository(db *database.DB) user.UserRepository {
 	return &userRepositoryImpl{db: db}
 }

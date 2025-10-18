@@ -9,6 +9,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/jwtauth/v5"
 )
@@ -23,6 +24,17 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		slog.String("version", "v1.0.0"),
 		slog.String("env", "development"),
 	)
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowCredentials: true,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		ExposedHeaders:   []string{"Link"},
+		MaxAge:           300,
+	}))
+
+	// r.Use(chiMiddleware.RealIP)
 
 	r.Use(httplog.RequestLogger(logger, &httplog.Options{
 		Level:  slog.LevelDebug,
@@ -74,7 +86,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Post("/", companyhandler.Create)
 				})
 
-				r.Route("/profile", func(r chi.Router) {
+				r.Route("/my", func(r chi.Router) {
 					r.Get("/", companyhandler.GetByID)
 
 					// Admin only

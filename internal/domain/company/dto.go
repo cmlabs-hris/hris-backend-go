@@ -24,6 +24,12 @@ func (r *CreateCompanyRequest) Validate() error {
 			Message: "company_name is required",
 		})
 	}
+	if len(r.Name) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "company_name",
+			Message: "company_name must not exceed 255 characters",
+		})
+	}
 	if validator.IsEmpty(r.Username) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "company_username",
@@ -39,8 +45,8 @@ func (r *CreateCompanyRequest) Validate() error {
 }
 
 type UpdateCompanyRequest struct {
-	Name    *string `json:"company_name"`
-	Address *string `json:"company_address"`
+	Name    *string `json:"company_name,omitempty"`
+	Address *string `json:"company_address,omitempty"`
 }
 
 func (r *UpdateCompanyRequest) Validate() error {

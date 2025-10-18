@@ -21,10 +21,18 @@ func (c *companyRepositoryImpl) Update(ctx context.Context, id string, req compa
 	updates := make(map[string]interface{})
 
 	if req.Name != nil {
-		updates["name"] = *req.Name
+		if *req.Name == "" {
+			updates["name"] = nil
+		} else {
+			updates["name"] = *req.Name
+		}
 	}
 	if req.Address != nil {
-		updates["address"] = *req.Address
+		if *req.Address == "" {
+			updates["address"] = nil
+		} else {
+			updates["address"] = *req.Address
+		}
 	}
 
 	if len(updates) == 0 {
@@ -44,6 +52,7 @@ func (c *companyRepositoryImpl) Update(ctx context.Context, id string, req compa
 	sql := "UPDATE companies SET " + strings.Join(setClauses, ", ") + fmt.Sprintf(" WHERE id = $%d", i)
 	args = append(args, id)
 
+	fmt.Println(sql)
 	var updatedID string
 	if err := q.QueryRow(ctx, sql+" RETURNING id", args...).Scan(&updatedID); err != nil {
 		return fmt.Errorf("failed to update company with id %s: %w", id, err)
@@ -106,14 +115,14 @@ func (c *companyRepositoryImpl) GetByID(ctx context.Context, id string) (company
 	q := GetQuerier(ctx, c.db)
 
 	query := `
-		SELECT id, name, username, created_at, updated_at
+		SELECT id, name, username, address, created_at, updated_at
 		FROM companies
 		WHERE id = $1
 	`
 
 	var found company.Company
 	err := q.QueryRow(ctx, query, id).
-		Scan(&found.ID, &found.Name, &found.Username, &found.CreatedAt, &found.UpdatedAt)
+		Scan(&found.ID, &found.Name, &found.Username, &found.Address, &found.CreatedAt, &found.UpdatedAt)
 	if err != nil {
 		return company.Company{}, err
 	}
@@ -126,14 +135,14 @@ func (c *companyRepositoryImpl) GetByUsername(ctx context.Context, username stri
 	q := GetQuerier(ctx, c.db)
 
 	query := `
-		SELECT id, name, username, created_at, updated_at
+		SELECT id, name, username, address, created_at, updated_at
 		FROM companies
 		WHERE username = $1
 	`
 
 	var found company.Company
 	err := q.QueryRow(ctx, query, username).
-		Scan(&found.ID, &found.Name, &found.Username, &found.CreatedAt, &found.UpdatedAt)
+		Scan(&found.ID, &found.Name, &found.Username, &found.Address, &found.CreatedAt, &found.UpdatedAt)
 	if err != nil {
 		return company.Company{}, err
 	}

@@ -23,11 +23,15 @@ func HandleError(w http.ResponseWriter, err error) {
 
 	switch {
 	// Security: generic message for registration conflicts
-	case errors.Is(err, user.ErrUserEmailExists), errors.Is(err, company.ErrCompanyUsernameExists):
-		Conflict(w, "Registration failed: one or more fields already exist")
+	// case errors.Is(err, user.ErrUserEmailExists), errors.Is(err, company.ErrCompanyUsernameExists):
+	// 	Conflict(w, "Registration failed: one or more fields already exist")
 
 	// Auth domain errors
+	case errors.Is(err, auth.ErrEmailAlreadyExists):
+		Conflict(w, "Account with this email already exists")
 	case errors.Is(err, auth.ErrInvalidCredentials):
+		Unauthorized(w, err.Error())
+	case errors.Is(err, auth.ErrInvalidEmployeeCodeCredentials):
 		Unauthorized(w, err.Error())
 	case errors.Is(err, auth.ErrTokenExpired):
 		Unauthorized(w, "Token expired")
@@ -43,6 +47,22 @@ func HandleError(w http.ResponseWriter, err error) {
 		Forbidden(w, "Account is locked")
 	case errors.Is(err, auth.ErrInvalidToken):
 		Unauthorized(w, "Invalid or expired token")
+	case errors.Is(err, auth.ErrStateCookieNotFound):
+		Unauthorized(w, "State cookie not found")
+	case errors.Is(err, auth.ErrStateMismatch):
+		Unauthorized(w, "State mismatch: value from cookie does not match value from URL parameter")
+	case errors.Is(err, auth.ErrStateParamEmpty):
+		Unauthorized(w, "State param is empty")
+	case errors.Is(err, auth.ErrStateCookieEmpty):
+		Unauthorized(w, "State cookie is empty")
+	case errors.Is(err, auth.ErrCodeValueEmpty):
+		BadRequest(w, "Code value is empty", nil)
+	case errors.Is(err, auth.ErrGoogleAccessDeniedByUser):
+		Unauthorized(w, "Google access denied by user")
+	case errors.Is(err, auth.ErrRefreshTokenCookieNotFound):
+		Unauthorized(w, "Refresh token cookie not found")
+	case errors.Is(err, auth.ErrRefreshTokenCookieEmpty):
+		Unauthorized(w, "Refresh token cookie is empty")
 
 	// Employee domain errors
 	case errors.Is(err, employee.ErrEmployeeNotFound):

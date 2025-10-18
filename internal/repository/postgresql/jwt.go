@@ -12,7 +12,7 @@ import (
 
 type JWTRepository interface {
 	CreateRefreshToken(ctx context.Context, userID string, token string, expiresAt int64, sessionReq auth.SessionTrackingRequest) error
-	IsRefreshTokenRevoked(ctx context.Context, token string) (bool, error)
+	IsRefreshTokenRevoked(ctx context.Context, token string) (string, bool, error)
 	RevokeRefreshToken(ctx context.Context, token string) error
 }
 
@@ -42,11 +42,11 @@ func (j *jwtRepositoryImpl) CreateRefreshToken(ctx context.Context, userID strin
 	return err
 }
 
-func (j *jwtRepositoryImpl) IsRefreshTokenRevoked(ctx context.Context, token string) (bool, error) {
+func (j *jwtRepositoryImpl) IsRefreshTokenRevoked(ctx context.Context, token string) (string, bool, error) {
 	q := GetQuerier(ctx, j.db)
 
 	query := `
-		SELECT revoked_at, expires_at
+		SELECT user_id, revoked_at, expires_at
 		FROM refresh_tokens
 		WHERE token_hash = $1
 		ORDER BY expires_at DESC
@@ -54,19 +54,20 @@ func (j *jwtRepositoryImpl) IsRefreshTokenRevoked(ctx context.Context, token str
 	`
 	tokenHash := j.hashToken(token)
 
+	var userID string
 	var revokedAt *time.Time
 	var expiresAt time.Time
 
-	err := q.QueryRow(ctx, query, tokenHash).Scan(&revokedAt, &expiresAt)
+	err := q.QueryRow(ctx, query, tokenHash).Scan(&userID, &revokedAt, &expiresAt)
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
 	now := time.Now()
 	if revokedAt != nil || !expiresAt.After(now) {
-		return true, nil
+		return userID, true, nil
 	}
-	return false, nil
+	return userID, false, nil
 }
 
 func (j *jwtRepositoryImpl) RevokeRefreshToken(ctx context.Context, token string) error {

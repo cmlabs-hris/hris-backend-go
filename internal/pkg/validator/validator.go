@@ -104,3 +104,9 @@ var companyUsernameRegex = regexp.MustCompile(`^[A-Za-z0-9._-]{3,50}$`)
 func IsValidCompanyUsername(companyUsername string) bool {
 	return companyUsernameRegex.MatchString(companyUsername)
 }
+
+var employeeCodeRegex = regexp.MustCompile(`^\d{4}-\d{4}$`)
+
+func IsValidEmployeeCode(code string) bool {
+	return employeeCodeRegex.MatchString(code)
+}
