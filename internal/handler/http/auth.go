@@ -10,7 +10,6 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
-	"github.com/go-chi/chi/v5"
 )
 
 type AuthHandler interface {
@@ -110,7 +109,7 @@ func (a *AuthHandlerImpl) LoginWithEmployeeCode(w http.ResponseWriter, r *http.R
 
 // LoginWithGoogle implements AuthHandler.
 func (a *AuthHandlerImpl) LoginWithGoogle(w http.ResponseWriter, r *http.Request) {
-	state := a.googleService.GenerateState()
+	state := a.googleService.GenerateState(r.UserAgent())
 	cookie := &http.Cookie{
 		Name:     "state",
 		Value:    state,
@@ -118,7 +117,7 @@ func (a *AuthHandlerImpl) LoginWithGoogle(w http.ResponseWriter, r *http.Request
 		Expires:  time.Now().Add(5 * time.Minute),
 		HttpOnly: true,
 		Secure:   false,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	}
 	http.SetCookie(w, cookie)
 	url := a.googleService.RedirectURL(state)
@@ -163,9 +162,10 @@ func (a *AuthHandlerImpl) OAuthCallbackGoogle(w http.ResponseWriter, r *http.Req
 	stateReq, err := r.Cookie("state")
 	if err != nil {
 		response.HandleError(w, auth.ErrStateCookieNotFound)
+		return
 	}
-	errorValue := chi.URLParam(r, "error")
-	if errorValue == "acces_denied" {
+	errorValue := r.URL.Query().Get("error")
+	if errorValue == "access_denied" {
 		response.HandleError(w, auth.ErrGoogleAccessDeniedByUser)
 		return
 	}
@@ -177,31 +177,37 @@ func (a *AuthHandlerImpl) OAuthCallbackGoogle(w http.ResponseWriter, r *http.Req
 	stateCookie := stateReq.Value
 	if stateCookie == "" {
 		response.HandleError(w, auth.ErrStateCookieEmpty)
+		return
 	}
 
-	stateParam := chi.URLParam(r, "state")
+	stateParam := r.URL.Query().Get("state")
 	if stateParam == "" {
 		response.HandleError(w, auth.ErrStateParamEmpty)
+		return
 	}
 
 	if stateParam != stateCookie {
 		response.HandleError(w, auth.ErrStateMismatch)
+		return
 	}
 
-	code := chi.URLParam(r, "code")
+	code := r.URL.Query().Get("code")
 	if code == "" {
 		response.HandleError(w, auth.ErrCodeValueEmpty)
+		return
 	}
 
 	token, err := a.googleService.VerifyToken(r.Context(), code)
 
 	if err != nil {
 		response.HandleError(w, err)
+		return
 	}
 
 	userGoogle, err := a.googleService.VerifyUser(r.Context(), token)
 	if err != nil {
 		response.HandleError(w, err)
+		return
 	}
 
 	var sessionTrackReq auth.SessionTrackingRequest
@@ -210,6 +216,7 @@ func (a *AuthHandlerImpl) OAuthCallbackGoogle(w http.ResponseWriter, r *http.Req
 	tokenResponse, err := a.authService.LoginWithGoogle(r.Context(), userGoogle.Email, userGoogle.GoogleID, sessionTrackReq)
 	if err != nil {
 		response.HandleError(w, err)
+		return
 	}
 
 	refreshTokenCookie := a.jwtService.RefreshTokenCookie(tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn)

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -12,7 +13,7 @@ import (
 
 type GoogleService interface {
 	// GenerateState generates a random state string for OAuth2 flows.
-	GenerateState() string
+	GenerateState(userAgent string) string
 	// RedirectURL generates the OAuth2 redirect URL with a state.
 	RedirectURL(state string) string
 	// VerifyToken exchanges the code for an OAuth2 token.
@@ -43,13 +44,14 @@ type GoogleInformation struct {
 }
 
 // GenerateState generates a random state string for OAuth2 flows.
-func (g *GoogleServiceImpl) GenerateState() string {
+func (g *GoogleServiceImpl) GenerateState(userAgent string) string {
 	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
 		return ""
 	}
-	return base64.URLEncoding.EncodeToString(b)
+	state := fmt.Sprintf("%s.%s", base64.URLEncoding.EncodeToString(b), userAgent)
+	return base64.URLEncoding.EncodeToString([]byte(state))
 }
 
 func (g *GoogleServiceImpl) RedirectURL(state string) string {
