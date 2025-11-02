@@ -5,12 +5,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type Service interface {
-	GenerateAccessToken(userID string, email string, companyID *string, isAdmin bool) (token string, expiresAt int64, err error)
+	GenerateAccessToken(userID string, email string, companyID *string, role user.Role) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
 	JWTAuth() *jwtauth.JWTAuth
 	RefreshTokenCookie(token string, expiresAt int64) *http.Cookie
@@ -41,7 +42,7 @@ func NewJWTService(secretKey string, accessTokenExpirationTime string, refreshTo
 	}
 }
 
-func (j *JWTService) GenerateAccessToken(userID string, email string, companyID *string, isAdmin bool) (token string, expiresAt int64, err error) {
+func (j *JWTService) GenerateAccessToken(userID string, email string, companyID *string, role user.Role) (token string, expiresAt int64, err error) {
 	expDuration, err := time.ParseDuration(j.accessTokenExpirationTime)
 	if err != nil {
 		return "", 0, err
@@ -52,7 +53,8 @@ func (j *JWTService) GenerateAccessToken(userID string, email string, companyID 
 		"user_id":    userID,
 		"email":      email,
 		"company_id": j.returnValueOrNil(companyID),
-		"is_admin":   isAdmin,
+		"role":       string(role),
+		"type":       "access",
 		"exp":        expiresAt,
 	})
 	return tokenString, expiresAt, err

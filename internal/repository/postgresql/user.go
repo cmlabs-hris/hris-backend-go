@@ -19,7 +19,7 @@ func (r *userRepositoryImpl) LinkPasswordAccount(ctx context.Context, id string,
 		UPDATE users
 		SET password_hash = $1, updated_at = NOW()
 		WHERE id = $2
-		RETURNING id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+		RETURNING id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 				  email_verified, email_verification_token, email_verification_sent_at,
 				  created_at, updated_at
 	`
@@ -30,7 +30,7 @@ func (r *userRepositoryImpl) LinkPasswordAccount(ctx context.Context, id string,
 		&updated.CompanyID,
 		&updated.Email,
 		&updated.PasswordHash,
-		&updated.IsAdmin,
+		&updated.Role,
 		&updated.OAuthProvider,
 		&updated.OAuthProviderID,
 		&updated.EmailVerified,
@@ -54,7 +54,7 @@ func (r *userRepositoryImpl) LinkGoogleAccount(ctx context.Context, GoogleID str
 		UPDATE users
 		SET oauth_provider = $1, oauth_provider_id = $2, updated_at = NOW()
 		WHERE email = $3
-		RETURNING id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+		RETURNING id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 				  email_verified, email_verification_token, email_verification_sent_at,
 				  created_at, updated_at
 	`
@@ -65,7 +65,7 @@ func (r *userRepositoryImpl) LinkGoogleAccount(ctx context.Context, GoogleID str
 		&updated.CompanyID,
 		&updated.Email,
 		&updated.PasswordHash,
-		&updated.IsAdmin,
+		&updated.Role,
 		&updated.OAuthProvider,
 		&updated.OAuthProviderID,
 		&updated.EmailVerified,
@@ -117,11 +117,11 @@ func (r *userRepositoryImpl) Create(ctx context.Context, newUser user.User) (use
 
 	query := `
 		INSERT INTO users (
-			company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+			company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 			email_verified, email_verification_token, email_verification_sent_at
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+		RETURNING id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 				  email_verified, email_verification_token, email_verification_sent_at,
 				  created_at, updated_at
 	`
@@ -131,7 +131,7 @@ func (r *userRepositoryImpl) Create(ctx context.Context, newUser user.User) (use
 		newUser.CompanyID,
 		newUser.Email,
 		newUser.PasswordHash,
-		newUser.IsAdmin,
+		newUser.Role,
 		newUser.OAuthProvider,
 		newUser.OAuthProviderID,
 		newUser.EmailVerified,
@@ -142,7 +142,7 @@ func (r *userRepositoryImpl) Create(ctx context.Context, newUser user.User) (use
 		&created.CompanyID,
 		&created.Email,
 		&created.PasswordHash,
-		&created.IsAdmin,
+		&created.Role,
 		&created.OAuthProvider,
 		&created.OAuthProviderID,
 		&created.EmailVerified,
@@ -163,7 +163,7 @@ func (r *userRepositoryImpl) GetByID(ctx context.Context, id string) (user.User,
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+		SELECT id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 			   email_verified, email_verification_token, email_verification_sent_at,
 			   created_at, updated_at
 		FROM users
@@ -176,7 +176,7 @@ func (r *userRepositoryImpl) GetByID(ctx context.Context, id string) (user.User,
 		&found.CompanyID,
 		&found.Email,
 		&found.PasswordHash,
-		&found.IsAdmin,
+		&found.Role,
 		&found.OAuthProvider,
 		&found.OAuthProviderID,
 		&found.EmailVerified,
@@ -197,7 +197,7 @@ func (r *userRepositoryImpl) GetByEmail(ctx context.Context, email string) (user
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, email, password_hash, is_admin, oauth_provider, oauth_provider_id,
+		SELECT id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
 			   email_verified, email_verification_token, email_verification_sent_at,
 			   created_at, updated_at
 		FROM users
@@ -210,7 +210,7 @@ func (r *userRepositoryImpl) GetByEmail(ctx context.Context, email string) (user
 		&found.CompanyID,
 		&found.Email,
 		&found.PasswordHash,
-		&found.IsAdmin,
+		&found.Role,
 		&found.OAuthProvider,
 		&found.OAuthProviderID,
 		&found.EmailVerified,

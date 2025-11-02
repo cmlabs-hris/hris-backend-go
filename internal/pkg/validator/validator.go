@@ -2,6 +2,7 @@ package validator
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -109,4 +110,43 @@ var employeeCodeRegex = regexp.MustCompile(`^\d{4}-\d{4}$`)
 
 func IsValidEmployeeCode(code string) bool {
 	return employeeCodeRegex.MatchString(code)
+}
+
+type Date time.Time
+
+// ParseDate parses a date string in "YYYY-MM-DD" format and returns a Date type.
+func ParseDate(dateStr string) (Date, error) {
+	t, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return Date{}, err
+	}
+	return Date(t), nil
+}
+
+// Before reports whether the date d is before u.
+func (d Date) Before(u Date) bool {
+	return time.Time(d).Before(time.Time(u))
+}
+
+// Itoa converts an integer to a string.
+func Itoa(i int) string {
+	return strconv.Itoa(i)
+}
+
+// IsValidDateTime checks if a string is a valid ISO8601 timestamp.
+// Accepts formats like: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+07:00"
+func IsValidDateTime(dateTimeStr string) (time.Time, bool) {
+	// Try RFC3339 format (ISO8601 with timezone)
+	t, err := time.Parse(time.RFC3339, dateTimeStr)
+	if err == nil {
+		return t, true
+	}
+
+	// Try RFC3339Nano format (with nanoseconds)
+	t, err = time.Parse(time.RFC3339Nano, dateTimeStr)
+	if err == nil {
+		return t, true
+	}
+
+	return time.Time{}, false
 }

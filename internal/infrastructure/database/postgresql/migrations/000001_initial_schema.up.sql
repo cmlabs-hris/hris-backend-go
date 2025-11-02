@@ -6,9 +6,10 @@
 -- Stores client companies.
 CREATE TABLE companies (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    name VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
     username VARCHAR(50) NOT NULL UNIQUE,
     address TEXT,
+    logo_url TEXT, 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_username_format CHECK (
@@ -24,7 +25,7 @@ CREATE TABLE users (
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     email VARCHAR(254) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
-    is_admin BOOLEAN NOT NULL DEFAULT false,
+    role VARCHAR(20), -- 'owner', 'manager', 'employee'
     oauth_provider VARCHAR(50) DEFAULT NULL CHECK (oauth_provider IS NULL OR oauth_provider = 'google'),
     oauth_provider_id VARCHAR(255),
     email_verified BOOLEAN NOT NULL DEFAULT false,
@@ -43,6 +44,8 @@ CREATE TABLE users (
             email ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
         )
 );
+CREATE INDEX idx_users_role ON users(role);
+CREATE INDEX idx_users_company_role ON users(company_id, role);
 
 -- Store refresh tokens for revocation
 CREATE TABLE refresh_tokens (
@@ -206,9 +209,47 @@ CREATE TABLE employee_schedule_assignments (
 -- Master table for leave types.
 CREATE TABLE leave_types (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    company_id UUID NOT NULL REFERENCES companies(id),
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    
+    -- Basic Info
     name VARCHAR(100) NOT NULL,
+    code VARCHAR(50), -- 'ANNUAL', 'SICK', 'MATERNITY', 'UNPAID'
     description TEXT,
+    color VARCHAR(7), -- #FF5733 for calendar display
+    
+    -- Policy Rules
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    requires_approval BOOLEAN NOT NULL DEFAULT true,
+    requires_attachment BOOLEAN NOT NULL DEFAULT false,
+    attachment_required_after_days SMALLINT, -- e.g., sick leave > 2 days need doctor note
+    
+    -- Quota Rules
+    has_quota BOOLEAN NOT NULL DEFAULT true, -- false for unpaid leave
+    accrual_method VARCHAR(20) NOT NULL DEFAULT 'yearly', -- 'yearly', 'monthly', 'daily', 'none'
+    
+    -- Deduction Rules
+    deduction_type VARCHAR(20) NOT NULL DEFAULT 'working_days', -- 'working_days', 'calendar_days'
+    allow_half_day BOOLEAN NOT NULL DEFAULT false,
+    
+    -- Request Rules
+    max_days_per_request SMALLINT, -- max 14 days for annual leave
+    min_notice_days SMALLINT NOT NULL DEFAULT 0, -- must request 3 days before
+    max_advance_days SMALLINT, -- can only request up to 90 days in advance
+    allow_backdate BOOLEAN NOT NULL DEFAULT false,
+    backdate_max_days SMALLINT, -- can backdate up to 7 days
+    
+    -- Rollover Rules
+    allow_rollover BOOLEAN NOT NULL DEFAULT false,
+    max_rollover_days SMALLINT,
+    rollover_expiry_month SMALLINT, -- expires March = 3
+    
+    quota_calculation_type VARCHAR(20) NOT NULL DEFAULT 'fixed', -- 'fixed', 'tenure_based', 'position_based', 'employment_type_based', 'grade_based'
+    quota_rules JSONB NOT NULL,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(company_id, code),
     UNIQUE(company_id, name)
 );
 
@@ -248,33 +289,102 @@ CREATE TABLE attendances (
 -- Leave quota per employee per year/type.
 CREATE TABLE leave_quotas (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    employee_id UUID NOT NULL REFERENCES employees(id),
-    leave_type_id UUID NOT NULL REFERENCES leave_types(id),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    leave_type_id UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
     year SMALLINT NOT NULL,
-    total_quota SMALLINT NOT NULL,
-    taken_quota SMALLINT NOT NULL DEFAULT 0,
-    UNIQUE(employee_id, leave_type_id, year)
+    
+    -- Quota Breakdown
+    opening_balance SMALLINT DEFAULT 0, -- quota di awal tahun
+    earned_quota SMALLINT DEFAULT 0, -- accrued during year
+    rollover_quota SMALLINT DEFAULT 0, -- carried forward from previous year
+    adjustment_quota SMALLINT DEFAULT 0, -- manual adjustment by HR
+    
+    -- Usage
+    used_quota DECIMAL(4,1) DEFAULT 0, -- support half-day: 0.5, 1.5, etc
+    pending_quota DECIMAL(4,1) DEFAULT 0, -- pending approval requests
+    
+    -- Calculated Fields
+    available_quota DECIMAL(4,1) GENERATED ALWAYS AS (
+        opening_balance + earned_quota + rollover_quota + adjustment_quota - used_quota - pending_quota
+    ) STORED,
+    
+    -- Expiry
+    rollover_expiry_date DATE,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(employee_id, leave_type_id, year),
+    CONSTRAINT chk_quotas_non_negative CHECK (
+        opening_balance >= 0 AND 
+        earned_quota >= 0 AND 
+        used_quota >= 0
+    )
 );
 
 -- Enum: leave_request_status_enum
 -- Status for leave requests.
-CREATE TYPE leave_request_status_enum AS ENUM ('waiting_approval', 'approved', 'rejected');
+CREATE TYPE leave_request_status_enum AS ENUM ('cancelled', 'waiting_approval', 'approved', 'rejected');
+CREATE TYPE leave_duration_enum AS ENUM ('full_day', 'half_day_morning', 'half_day_afternoon');
 
 -- Table: leave_requests
 -- Leave request transactions.
 CREATE TABLE leave_requests (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    employee_id UUID NOT NULL REFERENCES employees(id),
-    leave_type_id UUID NOT NULL REFERENCES leave_types(id),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    leave_type_id UUID NOT NULL REFERENCES leave_types(id) ON DELETE CASCADE,
+    
+    -- Date Range
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    reason TEXT,
-    status leave_request_status_enum NOT NULL DEFAULT 'waiting_approval',
+    
+    -- Duration Details
+    duration_type leave_duration_enum DEFAULT 'full_day',
+    total_days DECIMAL(4,1) NOT NULL, -- calculated: 1.5 days for half-day
+    working_days DECIMAL(4,1) NOT NULL, -- excluding weekends/holidays
+    
+    -- Request Details
+    reason TEXT NOT NULL,
     attachment_url TEXT,
+    emergency_leave BOOLEAN DEFAULT false,
+    is_backdate BOOLEAN DEFAULT false,
+    
+    -- Approval Workflow
+    status leave_request_status_enum NOT NULL DEFAULT 'waiting_approval',
     approved_by UUID REFERENCES users(id),
+    approved_at TIMESTAMPTZ,
+    rejection_reason TEXT,
+    
+    -- Cancellation
+    cancelled_by UUID REFERENCES users(id),
+    cancelled_at TIMESTAMPTZ,
+    cancellation_reason TEXT,
+    
+    -- Metadata
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chk_end_date_not_before_start_date CHECK (end_date >= start_date)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    CONSTRAINT chk_end_date_not_before_start_date CHECK (end_date >= start_date),
+    CONSTRAINT chk_total_days_positive CHECK (total_days > 0)
 );
+
+CREATE INDEX idx_leave_requests_employee_status ON leave_requests(employee_id, status);
+CREATE INDEX idx_leave_requests_date_range ON leave_requests(start_date, end_date);
+
+CREATE TABLE public_holidays (
+    id UUID PRIMARY KEY DEFAULT uuidv7(),
+    company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    
+    name VARCHAR(255) NOT NULL, -- "Hari Kemerdekaan RI"
+    date DATE NOT NULL,
+    is_recurring BOOLEAN DEFAULT false, -- true for annual holidays
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    
+    UNIQUE(company_id, date)
+);
+CREATE INDEX idx_public_holidays_date ON public_holidays(company_id, date);
 
 -- Table: document_types
 -- Master table for document types.

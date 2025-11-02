@@ -2,32 +2,42 @@ package leave
 
 import (
 	"context"
+	"time"
 )
 
-// LeaveTypeRepository - interface for leave_types table
 type LeaveTypeRepository interface {
 	Create(ctx context.Context, leaveType LeaveType) (LeaveType, error)
 	GetByID(ctx context.Context, id string) (LeaveType, error)
+	GetByName(ctx context.Context, companyID, name string) (LeaveType, error)
+	GetByCode(ctx context.Context, companyID, code string) (LeaveType, error)
 	GetByCompanyID(ctx context.Context, companyID string) ([]LeaveType, error)
-	Update(ctx context.Context, leaveType LeaveType) error
+	GetActiveByCompanyID(ctx context.Context, companyID string) ([]LeaveType, error)
+	Update(ctx context.Context, leaveType UpdateLeaveTypeRequest) error
 	Delete(ctx context.Context, id string) error
 }
 
-// LeaveQuotaRepository - interface for leave_quotas table
 type LeaveQuotaRepository interface {
 	Create(ctx context.Context, quota LeaveQuota) (LeaveQuota, error)
-	GetByEmployeeAndYear(ctx context.Context, employeeID string, year int) ([]LeaveQuota, error)
+	GetByID(ctx context.Context, id string) (LeaveQuota, error)
 	GetByEmployeeTypeYear(ctx context.Context, employeeID, leaveTypeID string, year int) (LeaveQuota, error)
-	Update(ctx context.Context, quota LeaveQuota) error
-	DecrementQuota(ctx context.Context, quotaID string, days int) error
+	GetByEmployeeYear(ctx context.Context, employeeID string, year int) ([]LeaveQuota, error)
+	GetByEmployee(ctx context.Context, employeeID string) ([]LeaveQuota, error)
+	GetByCompanyID(ctx context.Context, companyID string) ([]LeaveQuota, error)
+	GetByCompanyIDAndYear(ctx context.Context, companyID string, year int) ([]LeaveQuota, error)
+	Update(ctx context.Context, quota UpdateLeaveQuotaRequest) error
+	AddPendingQuota(ctx context.Context, quotaID string, amount float64) error
+	MovePendingToUsed(ctx context.Context, quotaID string, amount float64) error
+	RemovePendingQuota(ctx context.Context, quotaID string, amount float64) error
+	Delete(ctx context.Context, id string) error
 }
 
-// LeaveRequestRepository - interface for leave_requests table
 type LeaveRequestRepository interface {
-	Create(ctx context.Context, request LeaveRequest) (LeaveRequest, error)
+	Create(ctx context.Context, req LeaveRequest) (LeaveRequest, error)
 	GetByID(ctx context.Context, id string) (LeaveRequest, error)
-	GetByEmployeeID(ctx context.Context, employeeID string, filter string) ([]LeaveRequest, int64, error)
-	GetByCompanyID(ctx context.Context, companyID string, filter string) ([]LeaveRequest, int64, error)
-	Update(ctx context.Context, request LeaveRequest) error
-	UpdateStatus(ctx context.Context, id, status string, approvedBy *string) error
+	GetByEmployeeID(ctx context.Context, employeeID string, filter LeaveRequestFilter) ([]LeaveRequest, int64, error)
+	GetByCompanyID(ctx context.Context, companyID string, filter LeaveRequestFilter) ([]LeaveRequest, int64, error)
+	GetMyRequests(ctx context.Context, employeeID string, companyID string, filter MyLeaveRequestFilter) ([]LeaveRequest, int64, error)
+	Update(ctx context.Context, request UpdateLeaveRequestRequest) error
+	CheckOverlapping(ctx context.Context, employeeID string, startDate, endDate time.Time) (bool, error)
+	GetMyRequest(ctx context.Context, userID string, companyID string) ([]LeaveRequest, int64, error)
 }

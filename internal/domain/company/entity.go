@@ -7,6 +7,7 @@ type Company struct {
 	Name      string
 	Username  string
 	Address   *string
+	LogoURL   *string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

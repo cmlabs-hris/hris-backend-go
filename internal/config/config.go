@@ -15,6 +15,7 @@ type Config struct {
 	JWT          JWTConfig
 	App          AppConfig
 	OAuth2Google OAuth2GoogleConfig
+	Storage      StorageConfig
 }
 
 type DatabaseConfig struct {
@@ -45,6 +46,19 @@ type OAuth2GoogleConfig struct {
 	ClientSecret string
 	RedirectURL  string
 	Scopes       []string
+}
+
+type StorageConfig struct {
+	Type     string // "local", "minio", "s3"
+	BasePath string // "./storage"
+	BaseURL  string // "http://localhost:8080/uploads"
+
+	// MinIO/S3 config (for future)
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
 }
 
 func Load() (*Config, error) {
@@ -122,6 +136,16 @@ func Load() (*Config, error) {
 		Scopes:       GoogleScopes,
 	}
 
+	// Storage Configuration
+	storageType := getEnv("STORAGE_TYPE", "")
+	basePath := getEnv("BASE_PATH", "")
+	baseURL := getEnv("BASE_URL", "")
+	config.Storage = StorageConfig{
+		Type:     storageType,
+		BasePath: basePath,
+		BaseURL:  baseURL,
+	}
+
 	// Session configuration
 	// sessionTimeout, err := time.ParseDuration(getEnv("SESSION_TIMEOUT", "30m"))
 	// if err != nil {
@@ -162,6 +186,15 @@ func (c *Config) Validate() error {
 
 	if len(c.OAuth2Google.Scopes) == 0 {
 		return fmt.Errorf("SCOPES is required")
+	}
+	if c.Storage.Type == "" {
+		return fmt.Errorf("STORAGE_TYPE is required")
+	}
+	if c.Storage.BasePath == "" {
+		return fmt.Errorf("BASE_PATH is required")
+	}
+	if c.Storage.BaseURL == "" {
+		return fmt.Errorf("BASE_URL is required")
 	}
 	// if c.Session.Secret == "" {
 	// 	return fmt.Errorf("SESSION_SECRET is required")

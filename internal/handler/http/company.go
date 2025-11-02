@@ -9,6 +9,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
+	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	"github.com/go-chi/jwtauth/v5"
 )
 
@@ -23,6 +24,7 @@ type CompanyHandler interface {
 type CompanyHandlerImpl struct {
 	jwtService     jwt.Service
 	companyService company.CompanyService
+	fileService    file.FileService
 }
 
 // Create implements CompanyHandler.
@@ -89,9 +91,10 @@ func (c *CompanyHandlerImpl) Update(w http.ResponseWriter, r *http.Request) {
 	response.SuccessWithMessage(w, "Company updated successfully", nil)
 }
 
-func NewCompanyHandler(jwtService jwt.Service, companyService company.CompanyService) CompanyHandler {
+func NewCompanyHandler(jwtService jwt.Service, companyService company.CompanyService, fileService file.FileService) CompanyHandler {
 	return &CompanyHandlerImpl{
 		jwtService:     jwtService,
 		companyService: companyService,
+		fileService:    fileService,
 	}
 }

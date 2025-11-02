@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -41,14 +41,13 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		Schema: httplog.SchemaECS,
 	}))
 
-	r.Use(chiMiddleware.AllowContentEncoding("application/json"))
+	r.Use(chiMiddleware.AllowContentType("application/json", "multipart/form-data"))
 	r.Use(chiMiddleware.CleanPath)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(chiMiddleware.Heartbeat("/"))
 
-	r.Get("/yo", func(w http.ResponseWriter, r *http.Request) {
-		w.Write(([]byte("hello world\n")))
-	})
+	fileServer := http.FileServer(http.Dir(storageBasePath))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
 
 	r.Route("/api/v1", func(r chi.Router) {
 
@@ -76,27 +75,69 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		r.Group(func(r chi.Router) {
 			r.Use(jwtauth.Verifier(JWTService.JWTAuth()))
 			r.Use(middleware.AuthRequired(JWTService.JWTAuth()))
+			r.Use(middleware.RequireCompany)
 
-			r.Route("/companies", func(r chi.Router) {
+			r.Route("/company", func(r chi.Router) {
 
-				// Admin only
+				// Pending only
 				r.Group(func(r chi.Router) {
-					r.Use(middleware.AdminOnly)
-					r.Get("/", companyhandler.List)
+					r.Use(middleware.RequirePending)
 					r.Post("/", companyhandler.Create)
 				})
 
 				r.Route("/my", func(r chi.Router) {
 					r.Get("/", companyhandler.GetByID)
 
-					// Admin only
+					// Owner only
 					r.Group(func(r chi.Router) {
-						r.Use(middleware.AdminOnly)
+						r.Use(middleware.RequireOwner)
 						r.Put("/", companyhandler.Update)
 						r.Delete("/", companyhandler.Delete)
 					})
 				})
 			})
+
+			r.Route("/leave", func(r chi.Router) {
+				r.Route("/types", func(r chi.Router) {
+					r.Get("/", leaveHandler.ListTypes)
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Post("/", leaveHandler.CreateType)
+						r.Patch("/{id}", leaveHandler.UpdateType)
+						r.Delete("/{id}", leaveHandler.DeleteType)
+					})
+
+				})
+
+				r.Route("/quota", func(r chi.Router) {
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Get("/", leaveHandler.ListQuota)
+						r.Post("/", leaveHandler.SetQuota)
+						r.Post("/adjust", leaveHandler.AdjustQuota)
+					})
+					r.Get("/my", leaveHandler.GetMyQuota)
+					r.Get("/{id}", leaveHandler.GetQuota)
+				})
+
+				r.Route("/requests", func(r chi.Router) {
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireManager)
+						r.Get("/", leaveHandler.ListRequests)
+						r.Post("/{id}/approve", leaveHandler.ApproveRequest)
+						r.Post("/{id}/reject", leaveHandler.RejectRequest)
+					})
+					r.Post("/", leaveHandler.CreateRequest)
+					r.Post("/{id}", leaveHandler.GetRequest)
+					r.Get("/my", leaveHandler.GetMyRequests)
+				})
+			})
+
+			// r.Route("/employees", func(r chi.Router) {
+			// 	r.Get("/search", employeeHandler.SearchEmployees) // ← NEW: Autocomplete
+			// 	r.Get("/{id}", employeeHandler.GetEmployee)
+			// 	r.Post("/{id}/avatar", employeeHandler.UploadAvatar)
+			// })
 		})
 	})
 	return r

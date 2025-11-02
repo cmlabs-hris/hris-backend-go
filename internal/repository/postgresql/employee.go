@@ -11,8 +11,52 @@ type employeeRepositoryImpl struct {
 	db *database.DB
 }
 
-func NewEmployee(db *database.DB) employee.EmployeeRepository {
+func NewEmployeeRepository(db *database.DB) employee.EmployeeRepository {
 	return &employeeRepositoryImpl{db: db}
+}
+
+// GetActiveByCompanyID implements employee.EmployeeRepository.
+func (e *employeeRepositoryImpl) GetActiveByCompanyID(ctx context.Context, companyID string) ([]employee.Employee, error) {
+	q := GetQuerier(ctx, e.db)
+
+	query := `
+		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
+			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
+			hire_date, resignation_date, employment_type, employment_status, warning_letter,
+			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+		FROM employees
+		WHERE company_id = $1 AND employment_status = $2
+	`
+
+	rows, err := q.Query(ctx, query, companyID, employee.EmploymentStatusActive)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var employees []employee.Employee
+	for rows.Next() {
+		var emp employee.Employee
+		err := rows.Scan(
+			&emp.ID, &emp.UserID, &emp.CompanyID, &emp.WorkScheduleID, &emp.PositionID,
+			&emp.GradeID, &emp.BranchID, &emp.EmployeeCode, &emp.FullName, &emp.NIK,
+			&emp.Gender, &emp.PhoneNumber, &emp.Address, &emp.PlaceOfBirth, &emp.DOB,
+			&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
+			&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
+			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
+			&emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		employees = append(employees, emp)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return employees, nil
 }
 
 // Create implements employee.EmployeeRepository.
@@ -136,6 +180,37 @@ func (e *employeeRepositoryImpl) GetByID(ctx context.Context, id string) (employ
 
 	var found employee.Employee
 	err := q.QueryRow(ctx, query, id).
+		Scan(
+			&found.ID, &found.UserID, &found.CompanyID, &found.WorkScheduleID, &found.PositionID,
+			&found.GradeID, &found.BranchID, &found.EmployeeCode, &found.FullName, &found.NIK,
+			&found.Gender, &found.PhoneNumber, &found.Address, &found.PlaceOfBirth, &found.DOB,
+			&found.AvatarURL, &found.Education, &found.HireDate, &found.ResignationDate,
+			&found.EmploymentType, &found.EmploymentStatus, &found.WarningLetter,
+			&found.BankName, &found.BankAccountHolderName, &found.BankAccountNumber,
+			&found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
+		)
+	if err != nil {
+		return employee.Employee{}, err
+	}
+
+	return found, nil
+}
+
+// GetByUserID implements employee.EmployeeRepository.
+func (e *employeeRepositoryImpl) GetByUserID(ctx context.Context, userID string) (employee.Employee, error) {
+	q := GetQuerier(ctx, e.db)
+
+	query := `
+		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
+			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
+			hire_date, resignation_date, employment_type, employment_status, warning_letter,
+			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+		FROM employees
+		WHERE user_id = $1
+	`
+
+	var found employee.Employee
+	err := q.QueryRow(ctx, query, userID).
 		Scan(
 			&found.ID, &found.UserID, &found.CompanyID, &found.WorkScheduleID, &found.PositionID,
 			&found.GradeID, &found.BranchID, &found.EmployeeCode, &found.FullName, &found.NIK,

@@ -93,6 +93,60 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Insufficient leave quota", nil)
 	case errors.Is(err, leave.ErrLeaveRequestAlreadyProcessed):
 		Conflict(w, "Leave request already processed")
+	case errors.Is(err, leave.ErrLeaveTypeNotFound):
+		NotFound(w, "Leave type not found")
+	case errors.Is(err, leave.ErrLeaveTypesNotFound):
+		NotFound(w, "Leave types not found")
+	case errors.Is(err, leave.ErrLeaveTypeCodeExists):
+		Conflict(w, "Leave type code already exists")
+	case errors.Is(err, leave.ErrLeaveTypeNameExists):
+		Conflict(w, "Leave type name already exists")
+	case errors.Is(err, leave.ErrLeaveTypeInactive):
+		BadRequest(w, "Leave type is not active", nil)
+	case errors.Is(err, leave.ErrQuotaNotFound):
+		NotFound(w, "Leave quota not found")
+	case errors.Is(err, leave.ErrOverlappingLeave):
+		Conflict(w, "Leave dates overlap with existing request")
+	case errors.Is(err, leave.ErrLeaveAlreadyProcessed):
+		Conflict(w, "leave request is not in waiting approval status")
+	case errors.Is(err, leave.ErrBackdateNotAllowed):
+		BadRequest(w, "Backdate leave is not allowed", nil)
+	case errors.Is(err, leave.ErrBackdateTooOld):
+		BadRequest(w, "Backdate exceeds maximum allowed days", nil)
+	case errors.Is(err, leave.ErrInsufficientNotice):
+		BadRequest(w, "Insufficient notice period", nil)
+	case errors.Is(err, leave.ErrTooFarAdvance):
+		BadRequest(w, "Leave date is too far in advance", nil)
+	case errors.Is(err, leave.ErrExceedsMaxDays):
+		BadRequest(w, "Leave duration exceeds maximum days per request", nil)
+	case errors.Is(err, leave.ErrAttachmentRequired):
+		BadRequest(w, "Attachment is required for this leave type", nil)
+	case errors.Is(err, leave.ErrNotEligible):
+		Forbidden(w, "Employee is not eligible for this leave type")
+	case errors.Is(err, leave.ErrInsufficientTenure):
+		Forbidden(w, "Insufficient tenure for this leave type")
+	case errors.Is(err, leave.ErrProbationNotEligible):
+		Forbidden(w, "Probation employees are not eligible")
+	case errors.Is(err, leave.ErrQuotaNotAvailable):
+		BadRequest(w, "No quota available for this leave type", nil)
+	case errors.Is(err, leave.ErrPositionNotEligible):
+		Forbidden(w, "Employee position is not eligible for this leave type")
+	case errors.Is(err, leave.ErrGradeNotEligible):
+		Forbidden(w, "Employee grade is not eligible for this leave type")
+	case errors.Is(err, leave.ErrEmploymentTypeNotEligible):
+		Forbidden(w, "Employee employment type is not eligible for this leave type")
+	case errors.Is(err, leave.ErrCombinedRequirementsNotMet):
+		Forbidden(w, "Employee does not meet combined eligibility requirements")
+	case errors.Is(err, leave.ErrMinimumTenureNotMet):
+		Forbidden(w, "Employee does not meet minimum tenure requirement")
+	case errors.Is(err, leave.ErrFileSizeExceeds):
+		BadRequest(w, "File size exceeds 5MB", nil)
+	case errors.Is(err, leave.ErrFileTypeNotAllowed):
+		BadRequest(w, "File type not allowed. Allowed: pdf, jpg, jpeg, png", nil)
+	case errors.Is(err, leave.ErrUnauthorizedAccess):
+		Forbidden(w, "Unauthorized access to leave request")
+	case errors.Is(err, leave.ErrUnauthorizedAccessQuota):
+		Forbidden(w, "Unauthorized access to leave quota")
 
 	// User domain errors
 	case errors.Is(err, user.ErrUserNotFound):
@@ -111,6 +165,16 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Email verification token is empty", nil)
 	case errors.Is(err, user.ErrAdminPrivilegeRequired):
 		Forbidden(w, "Admin privilege required")
+	case errors.Is(err, user.ErrOwnerAccessRequired):
+		Forbidden(w, "Owner access required")
+	case errors.Is(err, user.ErrManagerAccessRequired):
+		Forbidden(w, "Manager access required")
+	case errors.Is(err, user.ErrPendingRoleAccessRequired):
+		Forbidden(w, "Pending role access required")
+	case errors.Is(err, user.ErrInsufficientPermissions):
+		Forbidden(w, "Insufficient permissions")
+	case errors.Is(err, user.ErrCompanyIDRequired):
+		Forbidden(w, "Create a company or join a company to access")
 	case errors.Is(err, user.ErrUpdatedAtBeforeCreatedAt):
 		BadRequest(w, "updated_at cannot be before created_at", nil)
 

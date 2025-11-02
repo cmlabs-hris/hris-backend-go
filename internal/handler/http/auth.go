@@ -161,51 +161,59 @@ func (a *AuthHandlerImpl) Logout(w http.ResponseWriter, r *http.Request) {
 func (a *AuthHandlerImpl) OAuthCallbackGoogle(w http.ResponseWriter, r *http.Request) {
 	stateReq, err := r.Cookie("state")
 	if err != nil {
+		slog.Error("State cookie not found", "error", err)
 		response.HandleError(w, auth.ErrStateCookieNotFound)
 		return
 	}
 	errorValue := r.URL.Query().Get("error")
 	if errorValue == "access_denied" {
+		slog.Error("Google access denied by user", "error", auth.ErrGoogleAccessDeniedByUser)
 		response.HandleError(w, auth.ErrGoogleAccessDeniedByUser)
 		return
 	}
 	if errorValue != "" {
+		slog.Error("Error in OAuth callback", "error", errorValue)
 		response.HandleError(w, err)
 		return
 	}
 
 	stateCookie := stateReq.Value
 	if stateCookie == "" {
+		slog.Error("State cookie is empty", "error", auth.ErrStateCookieEmpty)
 		response.HandleError(w, auth.ErrStateCookieEmpty)
 		return
 	}
 
 	stateParam := r.URL.Query().Get("state")
 	if stateParam == "" {
+		slog.Error("State parameter is empty", "error", auth.ErrStateParamEmpty)
 		response.HandleError(w, auth.ErrStateParamEmpty)
 		return
 	}
 
 	if stateParam != stateCookie {
+		slog.Error("State mismatch", "error", auth.ErrStateMismatch)
 		response.HandleError(w, auth.ErrStateMismatch)
 		return
 	}
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
+		slog.Error("Code value is empty", "error", auth.ErrCodeValueEmpty)
 		response.HandleError(w, auth.ErrCodeValueEmpty)
 		return
 	}
 
 	token, err := a.googleService.VerifyToken(r.Context(), code)
-
 	if err != nil {
+		slog.Error("Failed to verify token", "error", err)
 		response.HandleError(w, err)
 		return
 	}
 
 	userGoogle, err := a.googleService.VerifyUser(r.Context(), token)
 	if err != nil {
+		slog.Error("Failed to verify user", "error", err)
 		response.HandleError(w, err)
 		return
 	}
@@ -215,6 +223,7 @@ func (a *AuthHandlerImpl) OAuthCallbackGoogle(w http.ResponseWriter, r *http.Req
 	sessionTrackReq.UserAgent = r.UserAgent()
 	tokenResponse, err := a.authService.LoginWithGoogle(r.Context(), userGoogle.Email, userGoogle.GoogleID, sessionTrackReq)
 	if err != nil {
+		slog.Error("Failed to login with Google", "error", err)
 		response.HandleError(w, err)
 		return
 	}

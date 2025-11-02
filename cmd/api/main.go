@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
@@ -9,9 +10,12 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/storage"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	serviceAuth "github.com/cmlabs-hris/hris-backend-go/internal/service/auth"
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
+	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
+	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
 )
 
 func main() {
@@ -31,17 +35,43 @@ func main() {
 	userRepo := postgresql.NewUserRepository(db)
 	companyRepo := postgresql.NewCompanyRepository(db)
 	JWTRepository := postgresql.NewJWTRepository(db)
+	leaveTypeRepo := postgresql.NewLeaveTypeRepository(db)
+	leaveQuotaRepo := postgresql.NewLeaveQuotaRepository(db)
+	leaveRequestRepo := postgresql.NewLeaveRequestRepository(db)
+	employeeRepo := postgresql.NewEmployeeRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
+	quotaCalculatorService := leave.NewQuotaCalculator()
+	quotaService := leave.NewQuotaService(db, leaveTypeRepo, leaveQuotaRepo, employeeRepo, quotaCalculatorService)
+	requestService := leave.NewRequestService(db, leaveTypeRepo, leaveQuotaRepo, employeeRepo)
+	var fileStorage storage.FileStorage
+	switch cfg.Storage.Type {
+	case "local":
+		fileStorage, err = storage.NewLocalStorage(
+			cfg.Storage.BasePath,
+			cfg.Storage.BaseURL,
+		)
+		if err != nil {
+			log.Fatal("Failed to initialize local storage:", err)
+		}
+	case "minio":
+		// Future: minIO implementation
+		log.Fatal("Minio storage not yet implemented")
+	default:
+		log.Fatal("Unsupported storage types: ", cfg.Storage.Type)
+	}
 
+	fileService := file.NewFileService(fileStorage)
 	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository)
 	companyService := serviceCompany.NewCompanyService(db, companyRepo)
+	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, quotaService, requestService, fileService)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
-	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService)
+	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
+	leaveHandler := appHTTP.NewLeaveHandler(leaveService, fileService)
 
-	router := appHTTP.NewRouter(JWTService, authHandler, companyHandler)
+	router := appHTTP.NewRouter(JWTService, authHandler, companyHandler, leaveHandler, cfg.Storage.BasePath)
 
 	port := fmt.Sprintf(":%d", cfg.App.Port)
 	fmt.Printf("Server running at http://localhost%s\n", port)

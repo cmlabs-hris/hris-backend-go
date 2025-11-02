@@ -77,7 +77,7 @@ func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest,
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -139,7 +139,7 @@ func (a *AuthServiceImpl) LoginWithEmployeeCode(ctx context.Context, loginEmploy
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -186,7 +186,7 @@ func (a *AuthServiceImpl) LoginWithGoogle(ctx context.Context, googleEmail strin
 			CompanyID:               nil,
 			Email:                   googleEmail,
 			PasswordHash:            nil,
-			IsAdmin:                 false,
+			Role:                    user.RolePending,
 			OAuthProvider:           func(s string) *string { return &s }("google"),
 			OAuthProviderID:         &googleID,
 			EmailVerified:           true,
@@ -212,7 +212,7 @@ func (a *AuthServiceImpl) LoginWithGoogle(ctx context.Context, googleEmail strin
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -301,7 +301,7 @@ func (a *AuthServiceImpl) RefreshToken(ctx context.Context, req auth.RefreshToke
 
 	// 5. Generate new access token
 	accessTokenResponse.AccessToken, accessTokenResponse.AccessTokenExpiresIn, err =
-		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
+		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
 	if err != nil {
 		return auth.AccessTokenResponse{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -366,7 +366,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.Registe
 		CompanyID:               nil,
 		Email:                   registerReq.Email,
 		PasswordHash:            &hashedPassword,
-		IsAdmin:                 false,
+		Role:                    user.RolePending,
 		OAuthProvider:           nil,
 		OAuthProviderID:         nil,
 		EmailVerified:           false,
@@ -381,7 +381,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.Registe
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, false)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, newUser.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
