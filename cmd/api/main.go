@@ -16,6 +16,7 @@ import (
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
+	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
 )
 
 func main() {
@@ -39,6 +40,9 @@ func main() {
 	leaveQuotaRepo := postgresql.NewLeaveQuotaRepository(db)
 	leaveRequestRepo := postgresql.NewLeaveRequestRepository(db)
 	employeeRepo := postgresql.NewEmployeeRepository(db)
+	branchRepo := postgresql.NewBranchRepository(db)
+	gradeRepo := postgresql.NewGradeRepository(db)
+	positionRepo := postgresql.NewPositionRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
@@ -64,14 +68,16 @@ func main() {
 
 	fileService := file.NewFileService(fileStorage)
 	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository)
-	companyService := serviceCompany.NewCompanyService(db, companyRepo)
+	companyService := serviceCompany.NewCompanyService(db, companyRepo, fileService)
 	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, quotaService, requestService, fileService)
+	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
 	leaveHandler := appHTTP.NewLeaveHandler(leaveService, fileService)
+	masterHandler := appHTTP.NewMasterHandler(masterService)
 
-	router := appHTTP.NewRouter(JWTService, authHandler, companyHandler, leaveHandler, cfg.Storage.BasePath)
+	router := appHTTP.NewRouter(JWTService, authHandler, companyHandler, leaveHandler, masterHandler, cfg.Storage.BasePath)
 
 	port := fmt.Sprintf(":%d", cfg.App.Port)
 	fmt.Printf("Server running at http://localhost%s\n", port)

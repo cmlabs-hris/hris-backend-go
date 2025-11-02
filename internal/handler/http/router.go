@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -130,6 +130,51 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Post("/", leaveHandler.CreateRequest)
 					r.Post("/{id}", leaveHandler.GetRequest)
 					r.Get("/my", leaveHandler.GetMyRequests)
+				})
+			})
+
+			// Master Data Routes
+			r.Route("/master", func(r chi.Router) {
+				// Branch routes
+				r.Route("/branches", func(r chi.Router) {
+					r.Get("/", masterHandler.ListBranches)
+					r.Get("/{id}", masterHandler.GetBranch)
+
+					// Owner/Manager only
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireManager)
+						r.Post("/", masterHandler.CreateBranch)
+						r.Put("/{id}", masterHandler.UpdateBranch)
+						r.Delete("/{id}", masterHandler.DeleteBranch)
+					})
+				})
+
+				// Grade routes
+				r.Route("/grades", func(r chi.Router) {
+					r.Get("/", masterHandler.ListGrades)
+					r.Get("/{id}", masterHandler.GetGrade)
+
+					// Owner/Manager only
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireManager)
+						r.Post("/", masterHandler.CreateGrade)
+						r.Put("/{id}", masterHandler.UpdateGrade)
+						r.Delete("/{id}", masterHandler.DeleteGrade)
+					})
+				})
+
+				// Position routes
+				r.Route("/positions", func(r chi.Router) {
+					r.Get("/", masterHandler.ListPositions)
+					r.Get("/{id}", masterHandler.GetPosition)
+
+					// Owner/Manager only
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireManager)
+						r.Post("/", masterHandler.CreatePosition)
+						r.Put("/{id}", masterHandler.UpdatePosition)
+						r.Delete("/{id}", masterHandler.DeletePosition)
+					})
 				})
 			})
 

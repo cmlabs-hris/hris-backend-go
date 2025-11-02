@@ -187,6 +187,10 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Company name cannot be empty", nil)
 	case errors.Is(err, company.ErrUpdatedAtBeforeCreatedAt):
 		BadRequest(w, "updated_at cannot be before created_at", nil)
+	case errors.Is(err, company.ErrCompanyUsernameExists):
+		Conflict(w, "Company username already exists")
+	case errors.Is(err, company.ErrFileSizeExceeds):
+		BadRequest(w, "File size exceeds 5MB", nil)
 
 	// Default
 	default:

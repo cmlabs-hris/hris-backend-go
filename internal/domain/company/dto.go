@@ -1,6 +1,10 @@
 package company
 
-import "github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
+import (
+	"mime/multipart"
+
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
+)
 
 type CompanyResponse struct {
 	Name     string  `json:"company_name"`
@@ -9,27 +13,30 @@ type CompanyResponse struct {
 }
 
 type CreateCompanyRequest struct {
-	Name     string  `json:"company_name"`
-	Username string  `json:"company_username"`
-	Address  *string `json:"company_address"`
+	Name          string                `json:"company_name"`
+	Username      string                `json:"company_username"`
+	Address       *string               `json:"company_address,omitempty"`
+	AttachmentURL *string               `json:"-"`
+	File          multipart.File        `json:"-"`
+	FileHeader    *multipart.FileHeader `json:"-"`
 }
 
 func (r *CreateCompanyRequest) Validate() error {
 	var errs validator.ValidationErrors
 
 	// Company
-	if validator.IsEmpty(r.Name) {
-		errs = append(errs, validator.ValidationError{
-			Field:   "company_name",
-			Message: "company_name is required",
-		})
-	}
-	if len(r.Name) > 255 {
-		errs = append(errs, validator.ValidationError{
-			Field:   "company_name",
-			Message: "company_name must not exceed 255 characters",
-		})
-	}
+	// if validator.IsEmpty(r.Name) {
+	// 	errs = append(errs, validator.ValidationError{
+	// 		Field:   "company_name",
+	// 		Message: "company_name is required",
+	// 	})
+	// }
+	// if len(r.Name) > 255 {
+	// 	errs = append(errs, validator.ValidationError{
+	// 		Field:   "company_name",
+	// 		Message: "company_name must not exceed 255 characters",
+	// 	})
+	// }
 	if validator.IsEmpty(r.Username) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "company_username",

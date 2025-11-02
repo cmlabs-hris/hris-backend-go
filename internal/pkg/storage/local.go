@@ -33,7 +33,7 @@ func (s *LocalStorage) Upload(ctx context.Context, file io.Reader, path string, 
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
 	// Ensure file is within basePath
-	if !filepath.HasPrefix(fullPath, s.basePath) {
+	if !strings.HasPrefix(fullPath, s.basePath) {
 		return "", fmt.Errorf("invalid file path: %s", path)
 	}
 

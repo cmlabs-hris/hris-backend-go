@@ -87,7 +87,7 @@ CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
-    address TEXT, -- Removed for simplicity
+    address TEXT,
     UNIQUE(company_id, name)
 );
 

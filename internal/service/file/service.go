@@ -25,6 +25,9 @@ type FileService interface {
 	// Leave attachment uploads
 	UploadLeaveAttachment(ctx context.Context, employeeID string, file io.Reader, filename string) (string, error)
 
+	// UploadCompanyLogo uploads a company logo
+	UploadCompanyLogo(ctx context.Context, companyUsername string, file io.Reader, filename string) (string, error)
+
 	// Generic operations
 	DeleteFile(ctx context.Context, path string) error
 	GetFileURL(ctx context.Context, path string, expiry time.Duration) (string, error)
@@ -150,4 +153,42 @@ func (s *fileServiceImpl) DeleteFile(ctx context.Context, path string) error {
 // GetFileURL generates URL to access file
 func (s *fileServiceImpl) GetFileURL(ctx context.Context, path string, expiry time.Duration) (string, error) {
 	return s.storage.GetURL(ctx, path, expiry)
+}
+
+// UploadCompanyLogo uploads a company logo
+func (s *fileServiceImpl) UploadCompanyLogo(ctx context.Context, companyUsername string, file io.Reader, filename string) (string, error) {
+	// Validate file extension
+	ext := strings.ToLower(filepath.Ext(filename))
+	allowedExts := []string{".jpg", ".jpeg", ".png"}
+
+	isValid := false
+	for _, allowed := range allowedExts {
+		if ext == allowed {
+			isValid = true
+			break
+		}
+	}
+
+	if !isValid {
+		return "", fmt.Errorf("invalid file type: only jpg, jpeg, png allowed")
+	}
+
+	// Generate unique filename
+	uniqueID := uuid.New().String()
+	newFilename := fmt.Sprintf("%s-%s%s", companyUsername, uniqueID, ext)
+	path := filepath.Join("logos", companyUsername, newFilename)
+
+	// Determine content type
+	contentType := "image/jpeg"
+	if ext == ".png" {
+		contentType = "image/png"
+	}
+
+	// Upload
+	uploadedPath, err := s.storage.Upload(ctx, file, path, contentType)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload company logo: %w", err)
+	}
+
+	return uploadedPath, nil
 }

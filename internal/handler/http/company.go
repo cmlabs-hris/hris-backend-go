@@ -29,7 +29,48 @@ type CompanyHandlerImpl struct {
 
 // Create implements CompanyHandler.
 func (c *CompanyHandlerImpl) Create(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		slog.Error("Failed to parse multipart form", "error", err)
+		response.BadRequest(w, "Failed to parse form data", nil)
+		return
+	}
+
+	dataJSON := r.FormValue("data")
+	if dataJSON == "" {
+		response.BadRequest(w, "Field 'data' is required", nil)
+		return
+	}
+
+	var req company.CreateCompanyRequest
+	if err := json.Unmarshal([]byte(dataJSON), &req); err != nil {
+		slog.Error("Failed to unmarshal JSON data", "error", err)
+		response.BadRequest(w, "Invalid request format", nil)
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("attachment")
+	if err != nil && err != http.ErrMissingFile {
+		// Error other than missing file
+		slog.Error("Failed to get file from form", "error", err)
+		response.BadRequest(w, "Invalid file upload", nil)
+		return
+	}
+
+	req.File = file
+	req.FileHeader = fileHeader
+	if err := req.Validate(); err != nil {
+		response.HandleError(w, err)
+	}
+
+	company, err := c.companyService.Create(r.Context(), req)
+
+	response.Created(w, "Company created successfully", company)
 }
 
 // Delete implements CompanyHandler.

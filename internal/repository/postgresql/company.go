@@ -96,14 +96,29 @@ func (c *companyRepositoryImpl) Create(ctx context.Context, newCompany company.C
 	q := GetQuerier(ctx, c.db)
 
 	query := `
-		INSERT INTO companies (name, username)
-		VALUES ($1, $2)
-		RETURNING id, name, username, created_at, updated_at
+		INSERT INTO companies (name, username, address, logo_url)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, name, username, address, logo_url, created_at, updated_at
 	`
 
 	var created company.Company
-	err := q.QueryRow(ctx, query, newCompany.Name, newCompany.Username).
-		Scan(&created.ID, &created.Name, &created.Username, &created.CreatedAt, &created.UpdatedAt)
+
+	var addr interface{}
+	if newCompany.Address == nil {
+		addr = nil
+	} else {
+		addr = *newCompany.Address
+	}
+
+	var logo interface{}
+	if newCompany.LogoURL == nil {
+		logo = nil
+	} else {
+		logo = *newCompany.LogoURL
+	}
+
+	err := q.QueryRow(ctx, query, newCompany.Name, newCompany.Username, addr, logo).
+		Scan(&created.ID, &created.Name, &created.Username, &created.Address, &created.LogoURL, &created.CreatedAt, &created.UpdatedAt)
 	if err != nil {
 		return company.Company{}, err
 	}

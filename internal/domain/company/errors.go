@@ -8,4 +8,5 @@ var (
 	ErrInvalidCompanyUsernameFormat = errors.New("invalid company username format")
 	ErrInvalidCompanyName           = errors.New("company name cannot be empty")
 	ErrUpdatedAtBeforeCreatedAt     = errors.New("updated_at cannot be before created_at")
+	ErrFileSizeExceeds              = errors.New("File size exceeds 5MB")
 )
