@@ -2,12 +2,18 @@ package response
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/attendance"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/auth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
 )
@@ -147,6 +153,8 @@ func HandleError(w http.ResponseWriter, err error) {
 		Forbidden(w, "Unauthorized access to leave request")
 	case errors.Is(err, leave.ErrUnauthorizedAccessQuota):
 		Forbidden(w, "Unauthorized access to leave quota")
+	case errors.Is(err, leave.ErrNegativeQuota):
+		BadRequest(w, "Adjustment would result in negative available quota", nil)
 
 	// User domain errors
 	case errors.Is(err, user.ErrUserNotFound):
@@ -167,6 +175,8 @@ func HandleError(w http.ResponseWriter, err error) {
 		Forbidden(w, "Admin privilege required")
 	case errors.Is(err, user.ErrOwnerAccessRequired):
 		Forbidden(w, "Owner access required")
+	case errors.Is(err, user.ErrPendingRoleRequired):
+		Forbidden(w, "Pending role required")
 	case errors.Is(err, user.ErrManagerAccessRequired):
 		Forbidden(w, "Manager access required")
 	case errors.Is(err, user.ErrPendingRoleAccessRequired):
@@ -192,8 +202,85 @@ func HandleError(w http.ResponseWriter, err error) {
 	case errors.Is(err, company.ErrFileSizeExceeds):
 		BadRequest(w, "File size exceeds 5MB", nil)
 
+	// Master data - Branch domain errors
+	case errors.Is(err, branch.ErrBranchNotFound):
+		NotFound(w, "Branch not found")
+	case errors.Is(err, branch.ErrBranchNameExists):
+		Conflict(w, "Branch with this name already exists")
+	case errors.Is(err, branch.ErrBranchesNotFound):
+		NotFound(w, "Branches not found")
+	case errors.Is(err, branch.ErrUnauthorizedAccess):
+		Forbidden(w, "Unauthorized access to branch")
+
+	// Master data - Grade domain errors
+	case errors.Is(err, grade.ErrGradeNotFound):
+		NotFound(w, "Grade not found")
+	case errors.Is(err, grade.ErrGradeNameExists):
+		Conflict(w, "Grade with this name already exists")
+	case errors.Is(err, grade.ErrGradesNotFound):
+		NotFound(w, "Grades not found")
+	case errors.Is(err, grade.ErrUnauthorizedAccess):
+		Forbidden(w, "Unauthorized access to grade")
+
+	// Master data - Position domain errors
+	case errors.Is(err, position.ErrPositionNotFound):
+		NotFound(w, "Position not found")
+	case errors.Is(err, position.ErrPositionNameExists):
+		Conflict(w, "Position with this name already exists")
+	case errors.Is(err, position.ErrPositionsNotFound):
+		NotFound(w, "Positions not found")
+	case errors.Is(err, position.ErrUnauthorizedAccess):
+		Forbidden(w, "Unauthorized access to position")
+
+	// Schedule errors
+	// Schedule domain errors
+	case errors.Is(err, schedule.ErrWorkScheduleNotFound):
+		NotFound(w, "Work schedule not found")
+	case errors.Is(err, schedule.ErrWorkScheduleAlreadyDeleted):
+		NotFound(w, "Work schedule not found or already deleted")
+	case errors.Is(err, schedule.ErrWorkScheduleNameExists):
+		Conflict(w, "Work schedule with this name already exists")
+	case errors.Is(err, schedule.ErrWorkScheduleTimeNotFound):
+		NotFound(w, "Work schedule time not found")
+	case errors.Is(err, schedule.ErrWorkScheduleLocationNotFound):
+		NotFound(w, "Work schedule location not found")
+	case errors.Is(err, schedule.ErrEmployeeScheduleAssignmentNotFound):
+		NotFound(w, "Employee schedule assignment not found")
+	case errors.Is(err, schedule.ErrOverlappingScheduleAssignment):
+		Conflict(w, "Overlapping schedule assignment detected")
+	case errors.Is(err, schedule.ErrEmployeeIDRequired):
+		BadRequest(w, "Employee ID is required", nil)
+	case errors.Is(err, schedule.ErrInvalidDateFormat):
+		BadRequest(w, "Invalid date format. Use YYYY-MM-DD", nil)
+	case errors.Is(err, schedule.ErrWorkScheduleTimeExists):
+		Conflict(w, "Work schedule time already exists")
+	case errors.Is(err, schedule.ErrInvalidWorkScheduleType):
+		BadRequest(w, "Work schedule type must be 'WFO'", nil)
+	case errors.Is(err, schedule.ErrEmployeeScheduleTimelineNotFound):
+		NotFound(w, "Employee schedule timeline not found")
+
+	// Attendance domain errors
+	case errors.Is(err, attendance.ErrAlreadyCheckedIn):
+		Conflict(w, "You have already checked in today")
+	case errors.Is(err, attendance.ErrNoScheduleFound):
+		NotFound(w, "No schedule found for today")
+	case errors.Is(err, attendance.ErrOutsideAllowedRadius):
+		Forbidden(w, "You are outside the allowed radius")
+	case errors.Is(err, attendance.ErrTooEarlyToCheckIn):
+		BadRequest(w, "Too early to check in", nil)
+	case errors.Is(err, attendance.ErrNotCheckedIn):
+		BadRequest(w, "You have not checked in yet", nil)
+	case errors.Is(err, attendance.ErrAlreadyCheckedOut):
+		Conflict(w, "You have already checked out")
+	case errors.Is(err, attendance.ErrAttendanceNotFound):
+		NotFound(w, "Attendance record not found")
+	case errors.Is(err, attendance.ErrUnauthorized):
+		Forbidden(w, "Unauthorized to access this attendance record")
+
 	// Default
 	default:
+		// Log the error for debugging purposes
+		log.Printf("Unhandled error: %v", err)
 		InternalServerError(w, "An unexpected error occurred")
 	}
 }

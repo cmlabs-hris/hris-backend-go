@@ -47,7 +47,7 @@ func (l *leaveTypeRepositoryImpl) GetByName(ctx context.Context, companyID strin
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return leave.LeaveType{}, leave.ErrLeaveTypeNotFound
+			return leave.LeaveType{}, pgx.ErrNoRows
 		}
 		return leave.LeaveType{}, err
 	}
@@ -93,33 +93,17 @@ func (l *leaveTypeRepositoryImpl) Create(ctx context.Context, leaveType leave.Le
 
 	query := `
 		INSERT INTO leave_types (
-			id, company_id, name, code, description, color,
-			is_active, requires_approval, requires_attachment, attachment_required_after_days,
-			has_quota, accrual_method,
-			deduction_type, allow_half_day,
-			max_days_per_request, min_notice_days, max_advance_days, allow_backdate, backdate_max_days,
-			allow_rollover, max_rollover_days, rollover_expiry_month,
+			id, company_id, name,
 			quota_calculation_type, quota_rules,
 			created_at, updated_at
 		) VALUES (
-			uuidv7(), $1, $2, $3, $4, $5,
-			$6, $7, $8, $9,
-			$10, $11,
-			$12, $13,
-			$14, $15, $16, $17, $18,
-			$19, $20, $21,
-			$22, $23,
+			uuidv7(), $1, $2, $3, $4,
 			NOW(), NOW()
 		) RETURNING id, created_at, updated_at
 	`
 
 	err := q.QueryRow(ctx, query,
-		leaveType.CompanyID, leaveType.Name, leaveType.Code, leaveType.Description, leaveType.Color,
-		leaveType.IsActive, leaveType.RequiresApproval, leaveType.RequiresAttachment, leaveType.AttachmentRequiredAfterDays,
-		leaveType.HasQuota, leaveType.AccrualMethod,
-		leaveType.DeductionType, leaveType.AllowHalfDay,
-		leaveType.MaxDaysPerRequest, leaveType.MinNoticeDays, leaveType.MaxAdvanceDays, leaveType.AllowBackdate, leaveType.BackdateMaxDays,
-		leaveType.AllowRollover, leaveType.MaxRolloverDays, leaveType.RolloverExpiryMonth,
+		leaveType.CompanyID, leaveType.Name,
 		leaveType.QuotaCalculationType, quotaRulesJSON,
 	).Scan(&leaveType.ID, &leaveType.CreatedAt, &leaveType.UpdatedAt)
 
@@ -134,7 +118,14 @@ func (l *leaveTypeRepositoryImpl) Create(ctx context.Context, leaveType leave.Le
 func (l *leaveTypeRepositoryImpl) GetByCompanyID(ctx context.Context, companyID string) ([]leave.LeaveType, error) {
 	q := GetQuerier(ctx, l.db)
 	query := `
-		SELECT id, company_id, name, description, created_at, updated_at
+		SELECT id, company_id, name, code, description, color,
+			   is_active, requires_approval, requires_attachment, attachment_required_after_days,
+			   has_quota, accrual_method,
+			   deduction_type, allow_half_day,
+			   max_days_per_request, min_notice_days, max_advance_days, allow_backdate, backdate_max_days,
+			   allow_rollover, max_rollover_days, rollover_expiry_month,
+			   quota_calculation_type, quota_rules,
+			   created_at, updated_at
 		FROM leave_types
 		WHERE company_id = $1
 		ORDER BY name
@@ -148,9 +139,25 @@ func (l *leaveTypeRepositoryImpl) GetByCompanyID(ctx context.Context, companyID 
 	var leaveTypes []leave.LeaveType
 	for rows.Next() {
 		var lt leave.LeaveType
-		if err := rows.Scan(&lt.ID, &lt.CompanyID, &lt.Name, &lt.Description, &lt.CreatedAt, &lt.UpdatedAt); err != nil {
+		var quotaRulesJSON []byte
+
+		if err := rows.Scan(
+			&lt.ID, &lt.CompanyID, &lt.Name, &lt.Code, &lt.Description, &lt.Color,
+			&lt.IsActive, &lt.RequiresApproval, &lt.RequiresAttachment, &lt.AttachmentRequiredAfterDays,
+			&lt.HasQuota, &lt.AccrualMethod,
+			&lt.DeductionType, &lt.AllowHalfDay,
+			&lt.MaxDaysPerRequest, &lt.MinNoticeDays, &lt.MaxAdvanceDays, &lt.AllowBackdate, &lt.BackdateMaxDays,
+			&lt.AllowRollover, &lt.MaxRolloverDays, &lt.RolloverExpiryMonth,
+			&lt.QuotaCalculationType, &quotaRulesJSON,
+			&lt.CreatedAt, &lt.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
+
+		if quotaRulesJSON != nil {
+			json.Unmarshal(quotaRulesJSON, &lt.QuotaRules)
+		}
+
 		leaveTypes = append(leaveTypes, lt)
 	}
 	if err := rows.Err(); err != nil {

@@ -2,12 +2,14 @@ package leave
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type RequestService struct {
@@ -18,12 +20,13 @@ type RequestService struct {
 	employee.EmployeeRepository
 }
 
-func NewRequestService(db *database.DB, leaveTypeRepository leave.LeaveTypeRepository, leaveQuotaRepository leave.LeaveQuotaRepository, employeeRepository employee.EmployeeRepository) *RequestService {
+func NewRequestService(db *database.DB, leaveTypeRepository leave.LeaveTypeRepository, leaveQuotaRepository leave.LeaveQuotaRepository, leaveRequestRepository leave.LeaveRequestRepository, employeeRepository employee.EmployeeRepository) *RequestService {
 	return &RequestService{
-		db:                   db,
-		LeaveTypeRepository:  leaveTypeRepository,
-		LeaveQuotaRepository: leaveQuotaRepository,
-		EmployeeRepository:   employeeRepository,
+		db:                     db,
+		LeaveTypeRepository:    leaveTypeRepository,
+		LeaveQuotaRepository:   leaveQuotaRepository,
+		LeaveRequestRepository: leaveRequestRepository,
+		EmployeeRepository:     employeeRepository,
 	}
 }
 
@@ -59,8 +62,11 @@ func (r *RequestService) Approve(ctx context.Context, requestID string, approved
 }
 
 func (r *RequestService) CreateRequest(ctx context.Context, req leave.CreateLeaveRequestRequest) (leave.LeaveRequest, error) {
-	emp, err := r.EmployeeRepository.GetByUserID(ctx, req.EmployeeID)
+	emp, err := r.EmployeeRepository.GetByID(ctx, req.EmployeeID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return leave.LeaveRequest{}, employee.ErrEmployeeNotFound
+		}
 		return leave.LeaveRequest{}, fmt.Errorf("failed to get employee by user ID: %w", err)
 	}
 
@@ -91,6 +97,9 @@ func (r *RequestService) CreateRequest(ctx context.Context, req leave.CreateLeav
 		return leave.LeaveRequest{}, fmt.Errorf("date validation failed: %w", err)
 	}
 
+	fmt.Println(emp.ID)
+	fmt.Println(startDate)
+	fmt.Println(endDate)
 	hasOverlap, err := r.LeaveRequestRepository.CheckOverlapping(ctx, emp.ID, startDate, endDate)
 	if err != nil {
 		return leave.LeaveRequest{}, fmt.Errorf("failed to check overlapping leave requests: %w", err)
@@ -126,6 +135,8 @@ func (r *RequestService) CreateRequest(ctx context.Context, req leave.CreateLeav
 		return leave.LeaveRequest{}, fmt.Errorf("failed to create leave request: %w", err)
 	}
 
+	created.EmployeeName = &emp.FullName
+	created.LeaveTypeName = &leaveType.Name
 	return created, nil
 }
 
@@ -458,23 +469,12 @@ func (r *RequestService) Calculate(
 
 	for !currentDate.After(endDate) {
 		// Skip weekends (Saturday and Sunday)
-		// if currentDate.Weekday() != time.Saturday && currentDate.Weekday() != time.Sunday {
-		// 	// Skip public holidays
-		// 	// if !holidayMap[currentDate.Format("2006-01-02")] {
-		// 	// 	// Handle half-day on first or last day
-		// 	// 	if (currentDate.Equal(startDate) || currentDate.Equal(endDate)) &&
-		// 	// 		(durationType == "half_day_morning" || durationType == "half_day_afternoon") {
-		// 	// 		workingDays += 0.5
-		// 	// 	} else {
-		// 	// 		workingDays += 1.0
-		// 	// 	}
-		// 	// }
-		// }
-
 		if currentDate.Weekday() == time.Saturday || currentDate.Weekday() == time.Sunday {
+			currentDate = currentDate.AddDate(0, 0, 1)
 			continue
 		}
 		// if holidayMap[currentDate.Format("2006-01-02")] {
+		// 	currentDate = currentDate.AddDate(0, 0, 1)
 		// 	continue
 		// }
 		if (currentDate.Equal(startDate) || currentDate.Equal(endDate)) &&

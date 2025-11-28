@@ -42,4 +42,7 @@ var (
 	ErrEmploymentTypeNotEligible  = errors.New("employee employment type is not eligible for this leave type")
 	ErrCombinedRequirementsNotMet = errors.New("employee does not meet combined eligibility requirements")
 	ErrMinimumTenureNotMet        = errors.New("employee does not meet minimum tenure requirement")
+
+	// Leave Adjustment errors
+	ErrNegativeQuota = errors.New("adjustment would result in negative available quota")
 )

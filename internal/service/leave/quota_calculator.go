@@ -25,9 +25,23 @@ func (c *QuotaCalculator) CalculateQuota(ctx context.Context, employee employee.
 	var quota float64
 	var err error
 
-	switch leaveType.QuotaCalculationType {
+	switch leaveType.QuotaRules.Type {
 	case "tenure":
 		quota, err = c.calculateTenureBased(&employee, &leaveType.QuotaRules)
+	case "position":
+		quota, err = c.calculatePositionBased(ctx, &employee, &leaveType.QuotaRules)
+	case "grade":
+		quota, err = c.calculateGradeBased(ctx, &employee, &leaveType.QuotaRules)
+	case "employment_type":
+		quota, err = c.calculateEmploymentTypeBased(&employee, &leaveType.QuotaRules)
+	case "combined":
+		quota, err = c.calculateCombined(ctx, &employee, &leaveType.QuotaRules)
+	default:
+		// c.logger.Warn("Unknown quota calculation type, using default",
+		// 	zap.String("type", leaveType.QuotaRules.Type),
+		// )
+		return 0, fmt.Errorf("unknown quota calculation type: %s", leaveType.QuotaRules.Type)
+		// quota = float64(leaveType.QuotaPerYear)
 	}
 
 	if err != nil {

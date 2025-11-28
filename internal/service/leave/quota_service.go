@@ -3,11 +3,13 @@ package leave
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -27,6 +29,112 @@ func NewQuotaService(db *database.DB, leaveTypeRepository leave.LeaveTypeReposit
 		EmployeeRepository:   employeeRepository,
 		calculator:           calculator,
 	}
+}
+
+// AssignLeaveQuotasForEmployee assigns leave quotas for a single employee based on all active leave types.
+// This is used when creating a new employee (including owner) to automatically assign eligible leave quotas.
+// It checks eligibility based on QuotaRules for each leave type.
+func (q *QuotaService) AssignLeaveQuotasForEmployee(ctx context.Context, emp employee.Employee, year int) ([]leave.LeaveQuota, error) {
+	// Get all active leave types for the company
+	leaveTypes, err := q.LeaveTypeRepository.GetActiveByCompanyID(ctx, emp.CompanyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active leave types: %w", err)
+	}
+
+	assignedQuotas := make([]leave.LeaveQuota, 0)
+
+	for _, leaveType := range leaveTypes {
+		// Skip if leave type doesn't have quota
+		if leaveType.HasQuota != nil && !*leaveType.HasQuota {
+			slog.Debug("Skipping leave type without quota", "leave_type", leaveType.Name)
+			continue
+		}
+
+		// Check if quota already exists for this employee and leave type
+		existingQuota, err := q.LeaveQuotaRepository.GetByEmployeeTypeYear(ctx, emp.ID, leaveType.ID, year)
+		if err == nil && existingQuota.ID != "" {
+			slog.Debug("Quota already exists", "employee_id", emp.ID, "leave_type", leaveType.Name, "year", year)
+			continue
+		}
+
+		// Calculate quota based on rules
+		calculatedQuota, err := q.calculator.CalculateQuota(ctx, emp, leaveType)
+		if err != nil {
+			// Employee is not eligible for this leave type based on rules
+			slog.Debug("Employee not eligible for leave type",
+				"employee_id", emp.ID,
+				"leave_type", leaveType.Name,
+				"reason", err.Error(),
+			)
+			continue
+		}
+
+		// Skip if calculated quota is 0 or negative
+		if calculatedQuota <= 0 {
+			slog.Debug("Calculated quota is 0 or negative, skipping",
+				"employee_id", emp.ID,
+				"leave_type", leaveType.Name,
+			)
+			continue
+		}
+
+		// Determine opening balance and earned quota based on accrual method
+		openingBalance := int(calculatedQuota)
+		earnedQuota := 0
+
+		if leaveType.AccrualMethod != nil && *leaveType.AccrualMethod == "monthly" {
+			// For monthly accrual, calculate pro-rated quota
+			accruedQuota := q.calculator.CalculateAccruedQuota(emp.HireDate, calculatedQuota, time.Now())
+			openingBalance = 0
+			earnedQuota = int(accruedQuota)
+		}
+
+		// Create the quota
+		zeroFloat := 0.0
+		zeroInt := 0
+		newQuota := leave.LeaveQuota{
+			EmployeeID:      emp.ID,
+			LeaveTypeID:     leaveType.ID,
+			Year:            year,
+			OpeningBalance:  &openingBalance,
+			EarnedQuota:     &earnedQuota,
+			RolloverQuota:   &zeroInt,
+			AdjustmentQuota: &zeroInt,
+			UsedQuota:       &zeroFloat,
+			PendingQuota:    &zeroFloat,
+		}
+
+		createdQuota, err := q.LeaveQuotaRepository.Create(ctx, newQuota)
+		if err != nil {
+			slog.Warn("Failed to create quota",
+				"employee_id", emp.ID,
+				"leave_type", leaveType.Name,
+				"error", err,
+			)
+			continue
+		}
+
+		assignedQuotas = append(assignedQuotas, createdQuota)
+		slog.Info("Assigned leave quota",
+			"employee_id", emp.ID,
+			"leave_type", leaveType.Name,
+			"opening_balance", openingBalance,
+			"earned_quota", earnedQuota,
+			"year", year,
+		)
+	}
+
+	return assignedQuotas, nil
+}
+
+// AssignLeaveQuotasForEmployeeByID is a convenience method that fetches the employee first
+func (q *QuotaService) AssignLeaveQuotasForEmployeeByID(ctx context.Context, employeeID string, year int) ([]leave.LeaveQuota, error) {
+	emp, err := q.EmployeeRepository.GetByID(ctx, employeeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get employee: %w", err)
+	}
+
+	return q.AssignLeaveQuotasForEmployee(ctx, emp, year)
 }
 
 func (q *QuotaService) AllocateTypeQuota(ctx context.Context, leaveType leave.LeaveType, companyID string, year int) error {
@@ -92,9 +200,14 @@ func (q *QuotaService) AdjustQuota(
 	adjustment int,
 	reason string,
 ) error {
-	adjustedBy, ok := ctx.Value("user_id").(string)
-	if !ok {
-		return fmt.Errorf("user_id not found in context")
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	adjustedBy, ok := claims["user_id"].(string)
+	if !ok || adjustedBy == "" {
+		return fmt.Errorf("user_id claim is missing or invalid")
 	}
 
 	quota, err := q.LeaveQuotaRepository.GetByEmployeeTypeYear(
@@ -123,7 +236,7 @@ func (q *QuotaService) AdjustQuota(
 		int(*quota.UsedQuota) - int(*quota.PendingQuota)
 
 	if newAvailable < 0 {
-		return fmt.Errorf("adjustment would result in negative available quota")
+		return leave.ErrNegativeQuota
 	}
 
 	updateRequest := leave.UpdateLeaveQuotaRequest{

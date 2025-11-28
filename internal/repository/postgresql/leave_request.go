@@ -525,7 +525,7 @@ func (r *leaveRequestRepositoryImpl) GetByCompanyID(
             lr.cancelled_by, lr.cancelled_at, lr.cancellation_reason,
             lr.submitted_at, lr.created_at, lr.updated_at,
             lt.name as leave_type_name,
-            e.full_name as employee_name,
+            e.full_name as employee_name
     ` + baseQuery
 
 	// ORDER BY clause

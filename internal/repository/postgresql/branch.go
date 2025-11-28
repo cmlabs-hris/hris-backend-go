@@ -17,22 +17,72 @@ func NewBranchRepository(db *database.DB) branch.BranchRepository {
 	return &branchRepositoryImpl{db: db}
 }
 
+// GetTimezoneByEmployeeID implements branch.BranchRepository.
+func (r *branchRepositoryImpl) GetTimezoneByEmployeeID(ctx context.Context, employeeID string, companyID string) (string, error) {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		SELECT b.timezone
+		FROM branches b
+		JOIN employees e ON b.id = e.branch_id
+		WHERE e.id = $1 AND e.company_id = $2
+	`
+
+	var timezone string
+	err := q.QueryRow(ctx, query, employeeID, companyID).Scan(&timezone)
+
+	if err == pgx.ErrNoRows {
+		return "", fmt.Errorf("employee or branch not found: %w", err)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to get timezone by employee: %w", err)
+	}
+
+	return timezone, nil
+}
+
+// GetTimezone implements branch.BranchRepository.
+func (r *branchRepositoryImpl) GetTimezone(ctx context.Context, id string, companyID string) (string, error) {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+			SELECT timezone
+			FROM branches
+			WHERE id = $1 AND company_id = $2
+		`
+
+	var timezone string
+	err := q.QueryRow(ctx, query, id, companyID).Scan(&timezone)
+
+	if err == pgx.ErrNoRows {
+		return "", fmt.Errorf("branch not found: %w", err)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to get branch timezone: %w", err)
+	}
+
+	return timezone, nil
+}
+
 // Create implements branch.BranchRepository.
 func (r *branchRepositoryImpl) Create(ctx context.Context, b branch.Branch) (branch.Branch, error) {
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		INSERT INTO branches (id, company_id, name, address, created_at, updated_at)
-		VALUES (uuidv7(), $1, $2, $3, NOW(), NOW())
-		RETURNING id, company_id, name, address
+		INSERT INTO branches (id, company_id, name, address, timezone, created_at, updated_at)
+		VALUES (uuidv7(), $1, $2, $3, COALESCE($4, 'Asia/Jakarta'), NOW(), NOW())
+		RETURNING id, company_id, name, address, timezone
 	`
 
 	var result branch.Branch
-	err := q.QueryRow(ctx, query, b.CompanyID, b.Name, b.Address).Scan(
+	err := q.QueryRow(ctx, query, b.CompanyID, b.Name, b.Address, b.Timezone).Scan(
 		&result.ID,
 		&result.CompanyID,
 		&result.Name,
 		&result.Address,
+		&result.Timezone,
 	)
 
 	if err != nil {
@@ -43,27 +93,29 @@ func (r *branchRepositoryImpl) Create(ctx context.Context, b branch.Branch) (bra
 }
 
 // GetByID implements branch.BranchRepository.
-func (r *branchRepositoryImpl) GetByID(ctx context.Context, id string) (branch.Branch, error) {
+func (r *branchRepositoryImpl) GetByID(ctx context.Context, id string, companyID string) (branch.Branch, error) {
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, name, address
+		SELECT id, company_id, name, address, timezone
 		FROM branches
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 	`
 
 	var result branch.Branch
-	err := q.QueryRow(ctx, query, id).Scan(
+	err := q.QueryRow(ctx, query, id, companyID).Scan(
 		&result.ID,
 		&result.CompanyID,
 		&result.Name,
 		&result.Address,
+		&result.Timezone,
 	)
 
+	if err == pgx.ErrNoRows {
+		return branch.Branch{}, fmt.Errorf("branch not found: %w", err)
+	}
+
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return branch.Branch{}, fmt.Errorf("branch not found")
-		}
 		return branch.Branch{}, fmt.Errorf("failed to get branch: %w", err)
 	}
 
@@ -75,7 +127,7 @@ func (r *branchRepositoryImpl) GetByCompanyID(ctx context.Context, companyID str
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, name, address
+		SELECT id, company_id, name, address, timezone
 		FROM branches
 		WHERE company_id = $1
 		ORDER BY name ASC
@@ -95,6 +147,7 @@ func (r *branchRepositoryImpl) GetByCompanyID(ctx context.Context, companyID str
 			&b.CompanyID,
 			&b.Name,
 			&b.Address,
+			&b.Timezone,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan branch: %w", err)
@@ -130,8 +183,14 @@ func (r *branchRepositoryImpl) Update(ctx context.Context, req branch.UpdateBran
 		argIdx++
 	}
 
-	query += fmt.Sprintf(" WHERE id = $%d", argIdx)
-	args = append(args, req.ID)
+	if req.Timezone != nil {
+		query += fmt.Sprintf(", timezone = $%d", argIdx)
+		args = append(args, *req.Timezone)
+		argIdx++
+	}
+
+	query += fmt.Sprintf(" WHERE id = $%d AND company_id = $%d", argIdx, argIdx+1)
+	args = append(args, req.ID, req.CompanyID)
 
 	commandTag, err := q.Exec(ctx, query, args...)
 	if err != nil {
@@ -139,25 +198,25 @@ func (r *branchRepositoryImpl) Update(ctx context.Context, req branch.UpdateBran
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("branch not found")
+		return fmt.Errorf("branch not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil
 }
 
 // Delete implements branch.BranchRepository.
-func (r *branchRepositoryImpl) Delete(ctx context.Context, id string) error {
+func (r *branchRepositoryImpl) Delete(ctx context.Context, id string, companyID string) error {
 	q := GetQuerier(ctx, r.db)
 
-	query := `DELETE FROM branches WHERE id = $1`
+	query := `DELETE FROM branches WHERE id = $1 AND company_id = $2`
 
-	commandTag, err := q.Exec(ctx, query, id)
+	commandTag, err := q.Exec(ctx, query, id, companyID)
 	if err != nil {
 		return fmt.Errorf("failed to delete branch: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("branch not found")
+		return fmt.Errorf("branch not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil

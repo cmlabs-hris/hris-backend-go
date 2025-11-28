@@ -2,18 +2,21 @@ package leave
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/attendance"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -23,6 +26,7 @@ type LeaveServiceImpl struct {
 	leave.LeaveQuotaRepository
 	leave.LeaveRequestRepository
 	employee.EmployeeRepository
+	attendance.AttendanceRepository
 	quotaService   *QuotaService
 	requestService *RequestService
 	fileService    file.FileService
@@ -30,13 +34,19 @@ type LeaveServiceImpl struct {
 
 // GetLeaveRequest implements leave.LeaveService.
 func (l *LeaveServiceImpl) GetLeaveRequest(ctx context.Context, requestID string) (leave.LeaveRequestResponse, error) {
-	// Get role from context
-	role, _ := ctx.Value("user_role").(user.Role)
+	// Extract claims from JWT context
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return leave.LeaveRequestResponse{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	roleStr, _ := claims["user_role"].(string)
+	role := user.Role(roleStr)
 
 	// Fetch the leave request by ID
 	request, err := l.LeaveRequestRepository.GetByID(ctx, requestID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.LeaveRequestResponse{}, leave.ErrLeaveRequestNotFound
 		}
 		return leave.LeaveRequestResponse{}, fmt.Errorf("failed to get leave request: %w", err)
@@ -44,16 +54,22 @@ func (l *LeaveServiceImpl) GetLeaveRequest(ctx context.Context, requestID string
 
 	// If the role is employee, ensure the request belongs to the employee
 	if role == user.RoleEmployee {
-		userID := ctx.Value("user_id").(string)
+		userID, ok := claims["user_id"].(string)
+		if !ok || userID == "" {
+			return leave.LeaveRequestResponse{}, fmt.Errorf("user_id claim is missing or invalid")
+		}
 
 		// Fetch employee by user ID
-		employee, err := l.EmployeeRepository.GetByUserID(ctx, userID)
+		employeeData, err := l.EmployeeRepository.GetByUserID(ctx, userID)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return leave.LeaveRequestResponse{}, employee.ErrEmployeeNotFound
+			}
 			return leave.LeaveRequestResponse{}, fmt.Errorf("failed to get employee by user ID: %w", err)
 		}
 
 		// Compare employee ID from request and context
-		if request.EmployeeID != employee.ID {
+		if request.EmployeeID != employeeData.ID {
 			return leave.LeaveRequestResponse{}, leave.ErrUnauthorizedAccess
 		}
 	}
@@ -102,7 +118,7 @@ func (l *LeaveServiceImpl) GetMyRequest(ctx context.Context, userID string, comp
 
 	leaveRequest, total, err := l.LeaveRequestRepository.GetMyRequest(ctx, userID, companyID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.ListLeaveRequestResponse{}, leave.ErrLeaveRequestNotFound
 		}
 		return leave.ListLeaveRequestResponse{}, fmt.Errorf("failed to get leave requests: %w", err)
@@ -155,7 +171,7 @@ func (l *LeaveServiceImpl) ListLeaveRequest(
 	// Get requests from repository
 	leaveRequests, totalCount, err := l.LeaveRequestRepository.GetByCompanyID(ctx, companyID, filter)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.ListLeaveRequestResponse{}, leave.ErrLeaveRequestNotFound
 		}
 		return leave.ListLeaveRequestResponse{}, fmt.Errorf("failed to get leave requests: %w", err)
@@ -235,7 +251,7 @@ func (l *LeaveServiceImpl) ListMyLeaveRequests(
 	// Get requests from repository
 	leaveRequests, totalCount, err := l.LeaveRequestRepository.GetMyRequests(ctx, employeeID, companyID, filter)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.ListLeaveRequestResponse{}, leave.ErrLeaveRequestNotFound
 		}
 		return leave.ListLeaveRequestResponse{}, fmt.Errorf("failed to get my leave requests: %w", err)
@@ -305,7 +321,7 @@ func (l *LeaveServiceImpl) GetMyQuota(ctx context.Context, userID string, year i
 
 	emp, err := l.EmployeeRepository.GetByID(ctx, userID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, employee.ErrEmployeeNotFound
 		} else {
 			return nil, fmt.Errorf("failed to get employee by ID: %w", err)
@@ -314,7 +330,7 @@ func (l *LeaveServiceImpl) GetMyQuota(ctx context.Context, userID string, year i
 
 	leaveQuotas, err := l.LeaveQuotaRepository.GetByEmployeeYear(ctx, emp.ID, year)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, leave.ErrQuotaNotFound
 		}
 		return nil, fmt.Errorf("failed to get leave quotas: %w", err)
@@ -366,7 +382,17 @@ func (l *LeaveServiceImpl) GetByEmployeeYear(ctx context.Context, employeeID str
 
 // ApproveLeaveRequest implements leave.LeaveService.
 func (l *LeaveServiceImpl) ApproveLeaveRequest(ctx context.Context, requestID string) error {
-	approverID := ctx.Value("user_id").(string)
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	approverID, ok := claims["user_id"].(string)
+	if !ok || approverID == "" {
+		return fmt.Errorf("user_id claim is missing or invalid")
+	}
+
+	companyID, _ := claims["company_id"].(string)
 
 	return postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
@@ -380,8 +406,66 @@ func (l *LeaveServiceImpl) ApproveLeaveRequest(ctx context.Context, requestID st
 			return fmt.Errorf("failed to move pending to used quota: %w", err)
 		}
 
+		// Create attendance records for each day of the leave period
+		if err := l.createLeaveAttendanceRecords(txCtx, request, companyID, approverID); err != nil {
+			return fmt.Errorf("failed to create leave attendance records: %w", err)
+		}
+
 		return nil
 	})
+}
+
+// createLeaveAttendanceRecords creates attendance records with status as leave type name for each day in the leave period
+func (l *LeaveServiceImpl) createLeaveAttendanceRecords(ctx context.Context, request leave.LeaveRequest, companyID string, approverID string) error {
+	// Get leave type name for attendance status
+	leaveType, err := l.LeaveTypeRepository.GetByID(ctx, request.LeaveTypeID)
+	if err != nil {
+		return fmt.Errorf("failed to get leave type: %w", err)
+	}
+
+	currentDate := request.StartDate
+	now := time.Now()
+
+	for !currentDate.After(request.EndDate) {
+		// Skip weekends (Saturday = 6, Sunday = 0)
+		weekday := currentDate.Weekday()
+		if weekday == time.Saturday || weekday == time.Sunday {
+			currentDate = currentDate.AddDate(0, 0, 1)
+			continue
+		}
+
+		// Check if attendance already exists for this date
+		existingAttendance, err := l.AttendanceRepository.GetByEmployeeAndDate(ctx, request.EmployeeID, currentDate, companyID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("failed to check existing attendance: %w", err)
+		}
+
+		// Skip if attendance already exists
+		if existingAttendance != nil {
+			currentDate = currentDate.AddDate(0, 0, 1)
+			continue
+		}
+
+		// Create attendance record for leave (WorkScheduleTimeID is nil for leave records)
+		leaveAttendance := attendance.Attendance{
+			EmployeeID:  request.EmployeeID,
+			Date:        currentDate,
+			Status:      leaveType.Name, // Use leave type name as status
+			CompanyID:   companyID,
+			LeaveTypeID: &request.LeaveTypeID,
+			ApprovedBy:  &approverID,
+			ApprovedAt:  &now,
+		}
+
+		_, err = l.AttendanceRepository.Create(ctx, leaveAttendance)
+		if err != nil {
+			return fmt.Errorf("failed to create leave attendance for date %s: %w", currentDate.Format("2006-01-02"), err)
+		}
+
+		currentDate = currentDate.AddDate(0, 0, 1)
+	}
+
+	return nil
 }
 
 // CancelLeaveRequest implements leave.LeaveService.
@@ -469,10 +553,19 @@ func (l *LeaveServiceImpl) CreateLeaveRequest(ctx context.Context, req leave.Cre
 
 // CreateLeaveType implements leave.LeaveService.
 func (l *LeaveServiceImpl) CreateLeaveType(ctx context.Context, req leave.CreateLeaveTypeRequest) (leave.LeaveType, error) {
-	companyID := ctx.Value("company_id").(string)
-	_, err := l.LeaveTypeRepository.GetByName(ctx, companyID, req.Name)
+	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
-		if err != pgx.ErrNoRows {
+		return leave.LeaveType{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return leave.LeaveType{}, fmt.Errorf("company_id claim is missing or invalid")
+	}
+
+	_, err = l.LeaveTypeRepository.GetByName(ctx, companyID, req.Name)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
 			return leave.LeaveType{}, fmt.Errorf("failed to get leave type by name: %w", err)
 		}
 	}
@@ -538,7 +631,7 @@ func (l *LeaveServiceImpl) DeleteLeaveQuota(ctx context.Context, id string) erro
 func (l *LeaveServiceImpl) DeleteLeaveType(ctx context.Context, id string) error {
 	_, err := l.LeaveTypeRepository.GetByID(ctx, id)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.ErrLeaveTypeNotFound
 		} else {
 			return fmt.Errorf("failed to get leave type by id: %w", err)
@@ -554,12 +647,18 @@ func (l *LeaveServiceImpl) DeleteLeaveType(ctx context.Context, id string) error
 
 // GetLeaveQuota implements leave.LeaveService.
 func (l *LeaveServiceImpl) GetLeaveQuota(ctx context.Context, id string) (leave.LeaveQuota, error) {
-	// Get role from context
-	role, _ := ctx.Value("user_role").(user.Role)
+	// Extract claims from JWT context
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return leave.LeaveQuota{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	roleStr, _ := claims["user_role"].(string)
+	role := user.Role(roleStr)
 
 	leaveQuota, err := l.LeaveQuotaRepository.GetByID(ctx, id)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.LeaveQuota{}, leave.ErrQuotaNotFound
 		}
 		return leave.LeaveQuota{}, fmt.Errorf("failed to get leave quota: %w", err)
@@ -567,7 +666,10 @@ func (l *LeaveServiceImpl) GetLeaveQuota(ctx context.Context, id string) (leave.
 
 	// If the role is employee, ensure the quota belongs to the employee
 	if role == user.RoleEmployee {
-		userID := ctx.Value("user_id").(string)
+		userID, ok := claims["user_id"].(string)
+		if !ok || userID == "" {
+			return leave.LeaveQuota{}, fmt.Errorf("user_id claim is missing or invalid")
+		}
 
 		emp, err := l.EmployeeRepository.GetByUserID(ctx, userID)
 		if err != nil {
@@ -586,7 +688,7 @@ func (l *LeaveServiceImpl) GetLeaveQuota(ctx context.Context, id string) (leave.
 func (l *LeaveServiceImpl) GetLeaveType(ctx context.Context, id string) (leave.LeaveType, error) {
 	leaveType, err := l.LeaveTypeRepository.GetByID(ctx, id)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return leave.LeaveType{}, leave.ErrLeaveTypeNotFound
 		} else {
 			return leave.LeaveType{}, fmt.Errorf("failed to get leave type: %w", err)
@@ -602,7 +704,7 @@ func (l *LeaveServiceImpl) ListLeaveQuota(ctx context.Context, companyID string)
 
 	leaveQuotas, err := l.LeaveQuotaRepository.GetByCompanyID(ctx, companyID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, leave.ErrQuotaNotFound
 		} else {
 			return nil, fmt.Errorf("failed to get leave quota: %w", err)
@@ -627,6 +729,7 @@ func (l *LeaveServiceImpl) ListLeaveQuota(ctx context.Context, companyID string)
 			UsedQuota:       *leaveQuota.UsedQuota,
 			PendingQuota:    *leaveQuota.PendingQuota,
 			AvailableQuota:  *leaveQuota.AvailableQuota,
+			EmployeeName:    leaveQuota.EmployeeName,
 		})
 	}
 
@@ -636,8 +739,10 @@ func (l *LeaveServiceImpl) ListLeaveQuota(ctx context.Context, companyID string)
 // ListLeaveType implements leave.LeaveService.
 func (l *LeaveServiceImpl) ListLeaveType(ctx context.Context, companyID string) ([]leave.LeaveTypeResponse, error) {
 	leaveTypes, err := l.LeaveTypeRepository.GetByCompanyID(ctx, companyID)
-	if err != pgx.ErrNoRows {
-		return nil, fmt.Errorf("failed to get leave types: %w", err)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("failed to get leave types: %w", err)
+		}
 	}
 
 	if len(leaveTypes) == 0 {
@@ -667,7 +772,15 @@ func (l *LeaveServiceImpl) ListLeaveType(ctx context.Context, companyID string) 
 
 // RejectLeaveRequest implements leave.LeaveService.
 func (l *LeaveServiceImpl) RejectLeaveRequest(ctx context.Context, req leave.RejectRequestRequest) error {
-	approverID := ctx.Value("user_id").(string)
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	approverID, ok := claims["user_id"].(string)
+	if !ok || approverID == "" {
+		return fmt.Errorf("user_id claim is missing or invalid")
+	}
 
 	return postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
@@ -694,6 +807,9 @@ func (l *LeaveServiceImpl) UpdateLeaveQuota(ctx context.Context, req leave.Updat
 // UpdateLeaveType implements leave.LeaveService.
 func (l *LeaveServiceImpl) UpdateLeaveType(ctx context.Context, req leave.UpdateLeaveTypeRequest) error {
 	if err := l.LeaveTypeRepository.Update(ctx, req); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return leave.ErrLeaveTypeNotFound
+		}
 		return fmt.Errorf("failed to update leave type: %w", err)
 	}
 	return nil
@@ -705,6 +821,7 @@ func NewLeaveService(
 	leaveQuotaRepo leave.LeaveQuotaRepository,
 	leaveRequestRepo leave.LeaveRequestRepository,
 	employeeRepo employee.EmployeeRepository,
+	attendanceRepo attendance.AttendanceRepository,
 	quotaService *QuotaService,
 	requestService *RequestService,
 	fileService file.FileService,
@@ -714,6 +831,8 @@ func NewLeaveService(
 		LeaveTypeRepository:    leaveTypeRepo,
 		LeaveQuotaRepository:   leaveQuotaRepo,
 		LeaveRequestRepository: leaveRequestRepo,
+		EmployeeRepository:     employeeRepo,
+		AttendanceRepository:   attendanceRepo,
 		quotaService:           quotaService,
 		requestService:         requestService,
 		fileService:            fileService,

@@ -11,7 +11,7 @@ import (
 )
 
 type Service interface {
-	GenerateAccessToken(userID string, email string, companyID *string, role user.Role) (token string, expiresAt int64, err error)
+	GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
 	JWTAuth() *jwtauth.JWTAuth
 	RefreshTokenCookie(token string, expiresAt int64) *http.Cookie
@@ -42,7 +42,7 @@ func NewJWTService(secretKey string, accessTokenExpirationTime string, refreshTo
 	}
 }
 
-func (j *JWTService) GenerateAccessToken(userID string, email string, companyID *string, role user.Role) (token string, expiresAt int64, err error) {
+func (j *JWTService) GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role) (token string, expiresAt int64, err error) {
 	expDuration, err := time.ParseDuration(j.accessTokenExpirationTime)
 	if err != nil {
 		return "", 0, err
@@ -50,12 +50,13 @@ func (j *JWTService) GenerateAccessToken(userID string, email string, companyID 
 	expiresAt = time.Now().Add(expDuration).Unix()
 
 	_, tokenString, err := j.tokenAuth.Encode(map[string]interface{}{
-		"user_id":    userID,
-		"email":      email,
-		"company_id": j.returnValueOrNil(companyID),
-		"role":       string(role),
-		"type":       "access",
-		"exp":        expiresAt,
+		"user_id":     userID,
+		"email":       email,
+		"employee_id": j.returnValueOrNil(employeeID),
+		"company_id":  j.returnValueOrNil(companyID),
+		"role":        string(role),
+		"type":        "access",
+		"exp":         expiresAt,
 	})
 	return tokenString, expiresAt, err
 }

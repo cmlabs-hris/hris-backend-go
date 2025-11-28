@@ -31,8 +31,9 @@ func (r *CreateGradeRequest) Validate() error {
 }
 
 type UpdateGradeRequest struct {
-	ID   string `json:"id" validate:"required"`
-	Name string `json:"name" validate:"required,max=100"`
+	ID        string `json:"id" validate:"required"`
+	CompanyID string `json:"-"` // From JWT
+	Name      string `json:"name" validate:"required,max=100"`
 }
 
 func (r *UpdateGradeRequest) Validate() error {

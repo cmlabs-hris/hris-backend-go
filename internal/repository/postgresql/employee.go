@@ -2,13 +2,42 @@ package postgresql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type employeeRepositoryImpl struct {
 	db *database.DB
+}
+
+// UpdateSchedule implements employee.EmployeeRepository.
+func (e *employeeRepositoryImpl) UpdateSchedule(ctx context.Context, id string, workScheduleID string, companyID string) error {
+	q := GetQuerier(ctx, e.db)
+
+	query := `
+		UPDATE employees
+		SET work_schedule_id = $1, updated_at = NOW()
+		WHERE id = $2 AND company_id = $3
+		RETURNING id
+	`
+
+	var updatedID string
+	err := q.QueryRow(ctx, query, workScheduleID, id, companyID).Scan(&updatedID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("employee with id %s not found or does not belong to company %s: %w", id, companyID, err)
+		}
+		return fmt.Errorf("failed to update work schedule for employee with id %s: %w", id, err)
+	}
+
+	if len(updatedID) == 0 {
+		return fmt.Errorf("update failed, no rows affected")
+	}
+
+	return nil
 }
 
 func NewEmployeeRepository(db *database.DB) employee.EmployeeRepository {
@@ -71,9 +100,9 @@ func (e *employeeRepositoryImpl) Create(ctx context.Context, newEmployee employe
 			bank_name, bank_account_holder_name, bank_account_number
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-			$18, $19, $20, $21, $22,
-			$23, $24, $25
+			$8, $9, $10, $11, $12, $13, $14, $15, $16,
+			$17, $18, $19, $20, $21,
+			$22, $23, $24
 		)
 		RETURNING id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,

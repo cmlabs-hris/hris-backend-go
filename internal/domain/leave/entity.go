@@ -139,6 +139,9 @@ type LeaveQuota struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	EmployeeName  string
+	LeaveTypeName string
 }
 
 type LeaveRequestStatus string

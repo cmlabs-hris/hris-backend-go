@@ -2,15 +2,27 @@ package company
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
+	"github.com/cmlabs-hris/hris-backend-go/internal/fixtures"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
+	leaveservice "github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
+	"github.com/go-chi/jwtauth/v5"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -18,6 +30,19 @@ type CompanyServiceImpl struct {
 	db *database.DB
 	company.CompanyRepository
 	fileService file.FileService
+	user.UserRepository
+
+	// Repositories for seeding default data
+	positionRepo         position.PositionRepository
+	gradeRepo            grade.GradeRepository
+	branchRepo           branch.BranchRepository
+	leaveTypeRepo        leave.LeaveTypeRepository
+	workScheduleRepo     schedule.WorkScheduleRepository
+	workScheduleTimeRepo schedule.WorkScheduleTimeRepository
+	employeeRepo         employee.EmployeeRepository
+
+	// Service for assigning leave quotas
+	quotaService *leaveservice.QuotaService
 }
 
 // Create implements company.CompanyService.
@@ -25,11 +50,13 @@ type CompanyServiceImpl struct {
 func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompanyRequest) (company.Company, error) {
 	var newCompany company.Company
 	err := postgresql.WithTransaction(ctx, c.db, func(tx pgx.Tx) error {
-		_, err := c.CompanyRepository.GetByUsername(ctx, req.Username)
+		txCtx := context.WithValue(ctx, "tx", tx)
+		_, err := c.CompanyRepository.GetByUsername(txCtx, req.Username)
 		if err != nil {
-			if err != pgx.ErrNoRows {
+			if !errors.Is(err, pgx.ErrNoRows) {
 				return fmt.Errorf("failed to get company by username: %w", err)
 			}
+		} else {
 			return company.ErrCompanyUsernameExists
 		}
 		if req.File != nil && req.FileHeader != nil {
@@ -52,13 +79,14 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 				return leave.ErrFileTypeNotAllowed
 			}
 
-			attachmentURL, err := c.fileService.UploadCompanyLogo(ctx, newCompany.Username, req.File, req.FileHeader.Filename)
+			// Use req.Username instead of newCompany.Username (which is empty at this point)
+			attachmentURL, err := c.fileService.UploadCompanyLogo(txCtx, req.Username, req.File, req.FileHeader.Filename)
 			if err != nil {
-				return fmt.Errorf("failed to upload leave attachment: %w", err)
+				return fmt.Errorf("failed to upload company logo attachment: %w", err)
 			}
 			req.AttachmentURL = &attachmentURL
 		}
-		newCompany, err = c.CompanyRepository.Create(ctx, company.Company{
+		newCompany, err = c.CompanyRepository.Create(txCtx, company.Company{
 			Name:     req.Name,
 			Username: req.Username,
 			Address:  req.Address,
@@ -68,14 +96,152 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 			return fmt.Errorf("failed to create company: %w", err)
 		}
 
+		_, claims, err := jwtauth.FromContext(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to extract claims from context: %w", err)
+		}
+
+		userID, ok := claims["user_id"].(string)
+		if !ok || userID == "" {
+			return fmt.Errorf("user_id claim is missing or invalid")
+		}
+
+		if err := c.UserRepository.Update(txCtx, user.UpdateUserRequest{ID: userID, CompanyID: &newCompany.ID}); err != nil {
+			return fmt.Errorf("failed to update user with company ID: %w", err)
+		}
+
+		if err := c.UserRepository.UpdateRole(txCtx, user.UpdateUserRoleRequest{ID: userID, Role: string(user.RoleOwner)}); err != nil {
+			return fmt.Errorf("failed to update user role: %w", err)
+		}
+
+		// Seed default master data for the new company
+		seededIDs, err := c.seedDefaultData(txCtx, newCompany.ID, newCompany.Name)
+		if err != nil {
+			slog.Error("Failed to seed default data for company", "company_id", newCompany.ID, "error", err)
+			return fmt.Errorf("failed to seed default data: %w", err)
+		}
+
+		// Get default IDs for the owner employee
+		positionID, gradeID, branchID, workScheduleID := seededIDs.GetOwnerDefaults()
+
+		// Create the owner as an employee (use email as temporary name, should be updated later)
+		newEmployee := employee.Employee{
+			UserID:            userID,
+			CompanyID:         newCompany.ID,
+			PositionID:        positionID,
+			GradeID:           gradeID,
+			BranchID:          branchID,
+			WorkScheduleID:    workScheduleID,
+			EmployeeCode:      "0001-0001",        // First employee code
+			FullName:          "Company Owner",    // Placeholder, should be updated in onboarding
+			NIK:               "0000000000000000", // Placeholder, should be updated in onboarding
+			Gender:            employee.Male,      // Default, should be updated in onboarding
+			PhoneNumber:       "000000000000",     // Placeholder, should be updated in onboarding
+			HireDate:          time.Now(),
+			EmploymentType:    employee.EmploymentTypePermanent,
+			EmploymentStatus:  employee.EmploymentStatusActive,
+			BankName:          "N/A", // Placeholder, should be updated in onboarding
+			BankAccountNumber: "N/A", // Placeholder, should be updated in onboarding
+		}
+
+		createdOwnerEmployee, err := c.employeeRepo.Create(txCtx, newEmployee)
+		if err != nil {
+			return fmt.Errorf("failed to create owner employee: %w", err)
+		}
+		slog.Info("Created owner employee", "company_id", newCompany.ID, "user_id", userID, "employee_id", createdOwnerEmployee.ID)
+
+		// Assign leave quotas for the owner based on eligible leave types
+		assignedQuotas, err := c.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdOwnerEmployee, time.Now().Year())
+		if err != nil {
+			slog.Warn("Failed to assign leave quotas for owner", "employee_id", createdOwnerEmployee.ID, "error", err)
+			// Don't fail the transaction, just log the warning
+		} else {
+			slog.Info("Assigned leave quotas for owner", "employee_id", createdOwnerEmployee.ID, "quota_count", len(assignedQuotas))
+		}
+
 		return nil
 	})
-	// TODO ADD PREMADE MASTER SEEDING DATA
 	if err != nil {
 		return company.Company{}, err
 	}
 
 	return newCompany, nil
+}
+
+// seedDefaultData creates default master data for a newly created company and returns the IDs
+func (c *CompanyServiceImpl) seedDefaultData(ctx context.Context, companyID string, companyName string) (*fixtures.SeededDataIDs, error) {
+	seededIDs := fixtures.NewSeededDataIDs()
+
+	// 1. Seed default positions
+	positions := fixtures.GetDefaultPositions(companyID)
+	for _, pos := range positions {
+		createdPos, err := c.positionRepo.Create(ctx, pos)
+		if err != nil {
+			slog.Warn("Failed to create default position", "position", pos.Name, "error", err)
+			// Continue with other positions even if one fails (might be duplicate)
+		} else {
+			seededIDs.PositionIDs[createdPos.Name] = createdPos.ID
+		}
+	}
+	slog.Info("Seeded default positions", "company_id", companyID, "count", len(positions))
+
+	// 2. Seed default grades
+	grades := fixtures.GetDefaultGrades(companyID)
+	for _, g := range grades {
+		createdGrade, err := c.gradeRepo.Create(ctx, g)
+		if err != nil {
+			slog.Warn("Failed to create default grade", "grade", g.Name, "error", err)
+		} else {
+			seededIDs.GradeIDs[createdGrade.Name] = createdGrade.ID
+		}
+	}
+	slog.Info("Seeded default grades", "company_id", companyID, "count", len(grades))
+
+	// 3. Seed default branch (headquarters)
+	defaultBranch := fixtures.GetDefaultBranch(companyID, companyName)
+	createdBranch, err := c.branchRepo.Create(ctx, defaultBranch)
+	if err != nil {
+		slog.Warn("Failed to create default branch", "branch", defaultBranch.Name, "error", err)
+	} else {
+		seededIDs.BranchID = createdBranch.ID
+		slog.Info("Seeded default branch", "company_id", companyID, "branch", defaultBranch.Name)
+	}
+
+	// 4. Seed default leave types (Indonesian labor law compliant)
+	leaveTypes := fixtures.GetDefaultLeaveTypes(companyID)
+	for _, lt := range leaveTypes {
+		createdLT, err := c.leaveTypeRepo.Create(ctx, lt)
+		if err != nil {
+			slog.Warn("Failed to create default leave type", "leave_type", lt.Name, "error", err)
+		} else if lt.Code != nil {
+			seededIDs.LeaveTypeIDs[*lt.Code] = createdLT.ID
+		}
+	}
+	slog.Info("Seeded default leave types", "company_id", companyID, "count", len(leaveTypes))
+
+	// 5. Seed default work schedule
+	defaultSchedule := fixtures.GetDefaultWorkSchedule(companyID)
+	createdSchedule, err := c.workScheduleRepo.Create(ctx, defaultSchedule)
+	if err != nil {
+		slog.Warn("Failed to create default work schedule", "schedule", defaultSchedule.Name, "error", err)
+	} else {
+		seededIDs.WorkScheduleID = createdSchedule.ID
+		slog.Info("Seeded default work schedule", "company_id", companyID, "schedule", defaultSchedule.Name)
+
+		// 6. Seed work schedule times (Mon-Fri 09:00-18:00)
+		scheduleTimes := fixtures.GetDefaultWorkScheduleTimes(createdSchedule.ID)
+		for _, st := range scheduleTimes {
+			createdST, err := c.workScheduleTimeRepo.Create(ctx, st, companyID)
+			if err != nil {
+				slog.Warn("Failed to create default schedule time", "day", st.DayOfWeek, "error", err)
+			} else {
+				seededIDs.WorkScheduleTimeIDs[st.DayOfWeek] = createdST.ID
+			}
+		}
+		slog.Info("Seeded default work schedule times", "company_id", companyID, "count", len(scheduleTimes))
+	}
+
+	return seededIDs, nil
 }
 
 // Delete implements company.CompanyService.
@@ -104,10 +270,32 @@ func (c *CompanyServiceImpl) Update(ctx context.Context, id string, req company.
 	return nil
 }
 
-func NewCompanyService(db *database.DB, companyRepository company.CompanyRepository, fileService file.FileService) company.CompanyService {
+func NewCompanyService(
+	db *database.DB,
+	companyRepository company.CompanyRepository,
+	fileService file.FileService,
+	userRepository user.UserRepository,
+	positionRepo position.PositionRepository,
+	gradeRepo grade.GradeRepository,
+	branchRepo branch.BranchRepository,
+	leaveTypeRepo leave.LeaveTypeRepository,
+	workScheduleRepo schedule.WorkScheduleRepository,
+	workScheduleTimeRepo schedule.WorkScheduleTimeRepository,
+	employeeRepo employee.EmployeeRepository,
+	quotaService *leaveservice.QuotaService,
+) company.CompanyService {
 	return &CompanyServiceImpl{
-		db:                db,
-		CompanyRepository: companyRepository,
-		fileService:       fileService,
+		db:                   db,
+		CompanyRepository:    companyRepository,
+		fileService:          fileService,
+		UserRepository:       userRepository,
+		positionRepo:         positionRepo,
+		gradeRepo:            gradeRepo,
+		branchRepo:           branchRepo,
+		leaveTypeRepo:        leaveTypeRepo,
+		workScheduleRepo:     workScheduleRepo,
+		workScheduleTimeRepo: workScheduleTimeRepo,
+		employeeRepo:         employeeRepo,
+		quotaService:         quotaService,
 	}
 }

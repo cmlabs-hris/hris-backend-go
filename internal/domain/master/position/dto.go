@@ -3,7 +3,7 @@ package position
 import "github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
 
 type CreatePositionRequest struct {
-	Name string `json:"name" validate:"required,max=100"`
+	Name string `json:"name"`
 }
 
 func (r *CreatePositionRequest) Validate() error {
@@ -29,8 +29,9 @@ func (r *CreatePositionRequest) Validate() error {
 }
 
 type UpdatePositionRequest struct {
-	ID   string `json:"id" validate:"required"`
-	Name string `json:"name" validate:"required,max=100"`
+	ID        string `json:"id"`
+	CompanyID string `json:"-"` // From JWT
+	Name      string `json:"name"`
 }
 
 func (r *UpdatePositionRequest) Validate() error {

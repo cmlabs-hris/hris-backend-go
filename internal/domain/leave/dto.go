@@ -174,19 +174,17 @@ func (r *CreateLeaveTypeRequest) Validate() error {
 	}
 
 	// QuotaCalculationType
+	validQuotaCalcTypes := []string{"fixed", "tenure", "position", "employment_type", "grade", "combined"}
 	if validator.IsEmpty(r.QuotaCalculationType) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "quota_calculation_type",
 			Message: "quota_calculation_type is required",
 		})
-	} else {
-		validQuotaCalc := []string{"fixed", "tenure_based", "position_based", "employment_type_based", "grade_based"}
-		if !validator.IsInSlice(r.QuotaCalculationType, validQuotaCalc) {
-			errs = append(errs, validator.ValidationError{
-				Field:   "quota_calculation_type",
-				Message: "quota_calculation_type must be one of: fixed, tenure_based, position_based, employment_type_based, grade_based",
-			})
-		}
+	} else if !validator.IsInSlice(r.QuotaCalculationType, validQuotaCalcTypes) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "quota_calculation_type",
+			Message: "quota_calculation_type must be one of: fixed, tenure, position, employment_type, grade, combined",
+		})
 	}
 
 	// QuotaRules
@@ -213,53 +211,122 @@ func (r *CreateLeaveTypeRequest) Validate() error {
 				})
 			} else {
 				// Validate QuotaRules.Type
-				validTypes := []string{"fixed", "tenure", "position", "grade", "employment_type", "combined"}
 				if validator.IsEmpty(qr.Type) {
 					errs = append(errs, validator.ValidationError{
 						Field:   "quota_rules.type",
 						Message: "quota_rules.type is required",
 					})
-				} else if !validator.IsInSlice(qr.Type, validTypes) {
+				} else if !validator.IsInSlice(qr.Type, validQuotaCalcTypes) {
 					errs = append(errs, validator.ValidationError{
 						Field:   "quota_rules.type",
-						Message: "quota_rules.type must be one of: fixed, tenure, position, grade, employment_type, combined",
+						Message: "quota_rules.type must be one of: fixed, tenure, position, employment_type, grade, combined",
 					})
 				}
-				// Validate each rule
-				for i, rule := range qr.Rules {
-					if rule.Quota < 0 {
+
+				// Validate quota_calculation_type and quota_rules.type must match
+				if !validator.IsEmpty(r.QuotaCalculationType) && !validator.IsEmpty(qr.Type) && r.QuotaCalculationType != qr.Type {
+					errs = append(errs, validator.ValidationError{
+						Field:   "quota_rules.type",
+						Message: "quota_rules.type must match quota_calculation_type",
+					})
+				}
+
+				// Valid employment types
+				validEmploymentTypes := []string{"permanent", "probation", "contract", "internship", "freelance"}
+
+				// Special validation for "fixed" type
+				if qr.Type == "fixed" {
+					// For fixed type, rules must not exist
+					if len(qr.Rules) > 0 {
 						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].quota",
-							Message: "quota must not be negative",
+							Field:   "quota_rules.rules",
+							Message: "rules must not be provided when type is 'fixed'",
 						})
 					}
-					// For tenure-based, min/max months must be >= 0
-					if rule.MinMonths != nil && *rule.MinMonths < 0 {
+					// For fixed type, default_quota is mandatory
+					if qr.DefaultQuota <= 0 {
 						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
-							Message: "min_months must not be negative",
+							Field:   "quota_rules.default_quota",
+							Message: "default_quota is required and must be positive when type is 'fixed'",
 						})
 					}
-					if rule.MaxMonths != nil && *rule.MaxMonths < 0 {
-						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].max_months",
-							Message: "max_months must not be negative",
-						})
-					}
-					// For combined rules, validate conditions
-					if rule.Conditions != nil {
-						if rule.Conditions.MinTenureMonths != nil && *rule.Conditions.MinTenureMonths < 0 {
+				} else if len(qr.Rules) > 0 {
+					// If rules exist, validate each rule has quota field (mandatory)
+					for i, rule := range qr.Rules {
+						// Quota is mandatory in each rule and cannot be negative
+						if rule.Quota < 0 {
 							errs = append(errs, validator.ValidationError{
-								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
-								Message: "min_tenure_months must not be negative",
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].quota",
+								Message: "quota is required and must not be negative",
 							})
 						}
-						if rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MaxTenureMonths < 0 {
+
+						// Validate employment_type if provided
+						if rule.EmploymentType != "" && !validator.IsInSlice(rule.EmploymentType, validEmploymentTypes) {
 							errs = append(errs, validator.ValidationError{
-								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.max_tenure_months",
-								Message: "max_tenure_months must not be negative",
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].employment_type",
+								Message: "employment_type must be one of: permanent, probation, contract, internship, freelance",
 							})
 						}
+
+						// For tenure-based, min/max months must be >= 0
+						if rule.MinMonths != nil && *rule.MinMonths < 0 {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
+								Message: "min_months must not be negative",
+							})
+						}
+						if rule.MaxMonths != nil && *rule.MaxMonths < 0 {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].max_months",
+								Message: "max_months must not be negative",
+							})
+						}
+						// min_months must not be greater than max_months if both exist
+						if rule.MinMonths != nil && rule.MaxMonths != nil && *rule.MinMonths > *rule.MaxMonths {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
+								Message: "min_months must not be greater than max_months",
+							})
+						}
+
+						// For combined rules, validate conditions
+						if rule.Conditions != nil {
+							if rule.Conditions.MinTenureMonths != nil && *rule.Conditions.MinTenureMonths < 0 {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
+									Message: "min_tenure_months must not be negative",
+								})
+							}
+							if rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MaxTenureMonths < 0 {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.max_tenure_months",
+									Message: "max_tenure_months must not be negative",
+								})
+							}
+							// min_tenure_months must not be greater than max_tenure_months if both exist
+							if rule.Conditions.MinTenureMonths != nil && rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MinTenureMonths > *rule.Conditions.MaxTenureMonths {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
+									Message: "min_tenure_months must not be greater than max_tenure_months",
+								})
+							}
+							// Validate employment_type in conditions if provided
+							if rule.Conditions.EmploymentType != "" && !validator.IsInSlice(rule.Conditions.EmploymentType, validEmploymentTypes) {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.employment_type",
+									Message: "employment_type must be one of: permanent, probation, contract, internship, freelance",
+								})
+							}
+						}
+					}
+				} else {
+					// If no rules and type is not fixed, default_quota is mandatory
+					if qr.DefaultQuota < 0 {
+						errs = append(errs, validator.ValidationError{
+							Field:   "quota_rules.default_quota",
+							Message: "default_quota is required when rules are not provided and must not be negative",
+						})
 					}
 				}
 			}
@@ -322,6 +389,11 @@ func (r *UpdateLeaveTypeRequest) Validate() error {
 		errs = append(errs, validator.ValidationError{
 			Field:   "id",
 			Message: "id is required",
+		})
+	} else if !validator.IsValidUUID(r.ID) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "id",
+			Message: "id must be a valid UUID",
 		})
 	}
 
@@ -516,25 +588,30 @@ func (r *UpdateLeaveTypeRequest) Validate() error {
 		}
 	}
 
-	// QuotaCalculationType
-	if r.QuotaCalculationType != nil {
-		validQuotaCalc := []string{"fixed", "tenure_based", "position_based", "employment_type_based", "grade_based"}
-		if !validator.IsInSlice(*r.QuotaCalculationType, validQuotaCalc) {
-			errs = append(errs, validator.ValidationError{
-				Field:   "quota_calculation_type",
-				Message: "quota_calculation_type must be one of: fixed, tenure_based, position_based, employment_type_based, grade_based",
-			})
-		}
-		if len(*r.QuotaCalculationType) > 20 {
-			errs = append(errs, validator.ValidationError{
-				Field:   "quota_calculation_type",
-				Message: "quota_calculation_type must not exceed 20 characters",
-			})
-		}
+	// QuotaCalculationType and QuotaRules - must both be provided or neither
+	hasQuotaCalcType := r.QuotaCalculationType != nil && !validator.IsEmpty(*r.QuotaCalculationType)
+	hasQuotaRules := r.QuotaRules != nil
+
+	if hasQuotaCalcType != hasQuotaRules {
+		errs = append(errs, validator.ValidationError{
+			Field:   "quota_calculation_type",
+			Message: "quota_calculation_type and quota_rules must both be provided or neither",
+		})
 	}
 
-	// QuotaRules
-	if r.QuotaRules != nil {
+	// Only validate if both are provided
+	if hasQuotaCalcType && hasQuotaRules {
+		validQuotaCalcTypes := []string{"fixed", "tenure", "position", "employment_type", "grade", "combined"}
+
+		// Validate QuotaCalculationType
+		if !validator.IsInSlice(*r.QuotaCalculationType, validQuotaCalcTypes) {
+			errs = append(errs, validator.ValidationError{
+				Field:   "quota_calculation_type",
+				Message: "quota_calculation_type must be one of: fixed, tenure, position, employment_type, grade, combined",
+			})
+		}
+
+		// Validate QuotaRules structure
 		qrBytes, err := json.Marshal(r.QuotaRules)
 		if err != nil {
 			errs = append(errs, validator.ValidationError{
@@ -549,50 +626,123 @@ func (r *UpdateLeaveTypeRequest) Validate() error {
 					Message: "quota_rules structure is invalid",
 				})
 			} else {
-				validTypes := []string{"fixed", "tenure", "position", "grade", "employment_type", "combined"}
+				// Validate QuotaRules.Type
 				if validator.IsEmpty(qr.Type) {
 					errs = append(errs, validator.ValidationError{
 						Field:   "quota_rules.type",
 						Message: "quota_rules.type is required",
 					})
-				} else if !validator.IsInSlice(qr.Type, validTypes) {
+				} else if !validator.IsInSlice(qr.Type, validQuotaCalcTypes) {
 					errs = append(errs, validator.ValidationError{
 						Field:   "quota_rules.type",
-						Message: "quota_rules.type must be one of: fixed, tenure, position, grade, employment_type, combined",
+						Message: "quota_rules.type must be one of: fixed, tenure, position, employment_type, grade, combined",
 					})
 				}
-				for i, rule := range qr.Rules {
-					if rule.Quota < 0 {
+
+				// Validate quota_calculation_type and quota_rules.type must match
+				if !validator.IsEmpty(*r.QuotaCalculationType) && !validator.IsEmpty(qr.Type) && *r.QuotaCalculationType != qr.Type {
+					errs = append(errs, validator.ValidationError{
+						Field:   "quota_rules.type",
+						Message: "quota_rules.type must match quota_calculation_type",
+					})
+				}
+
+				// Valid employment types
+				validEmploymentTypes := []string{"permanent", "probation", "contract", "internship", "freelance"}
+
+				// Special validation for "fixed" type
+				if qr.Type == "fixed" {
+					// For fixed type, rules must not exist
+					if len(qr.Rules) > 0 {
 						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].quota",
-							Message: "quota must not be negative",
+							Field:   "quota_rules.rules",
+							Message: "rules must not be provided when type is 'fixed'",
 						})
 					}
-					if rule.MinMonths != nil && *rule.MinMonths < 0 {
+					// For fixed type, default_quota is mandatory
+					if qr.DefaultQuota <= 0 {
 						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
-							Message: "min_months must not be negative",
+							Field:   "quota_rules.default_quota",
+							Message: "default_quota is required and must be positive when type is 'fixed'",
 						})
 					}
-					if rule.MaxMonths != nil && *rule.MaxMonths < 0 {
-						errs = append(errs, validator.ValidationError{
-							Field:   "quota_rules.rules[" + validator.Itoa(i) + "].max_months",
-							Message: "max_months must not be negative",
-						})
-					}
-					if rule.Conditions != nil {
-						if rule.Conditions.MinTenureMonths != nil && *rule.Conditions.MinTenureMonths < 0 {
+				} else if len(qr.Rules) > 0 {
+					// If rules exist, validate each rule has quota field (mandatory)
+					for i, rule := range qr.Rules {
+						// Quota is mandatory in each rule and cannot be negative
+						if rule.Quota < 0 {
 							errs = append(errs, validator.ValidationError{
-								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
-								Message: "min_tenure_months must not be negative",
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].quota",
+								Message: "quota is required and must not be negative",
 							})
 						}
-						if rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MaxTenureMonths < 0 {
+
+						// Validate employment_type if provided
+						if rule.EmploymentType != "" && !validator.IsInSlice(rule.EmploymentType, validEmploymentTypes) {
 							errs = append(errs, validator.ValidationError{
-								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.max_tenure_months",
-								Message: "max_tenure_months must not be negative",
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].employment_type",
+								Message: "employment_type must be one of: permanent, probation, contract, internship, freelance",
 							})
 						}
+
+						// For tenure-based, min/max months must be >= 0
+						if rule.MinMonths != nil && *rule.MinMonths < 0 {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
+								Message: "min_months must not be negative",
+							})
+						}
+						if rule.MaxMonths != nil && *rule.MaxMonths < 0 {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].max_months",
+								Message: "max_months must not be negative",
+							})
+						}
+						// min_months must not be greater than max_months if both exist
+						if rule.MinMonths != nil && rule.MaxMonths != nil && *rule.MinMonths > *rule.MaxMonths {
+							errs = append(errs, validator.ValidationError{
+								Field:   "quota_rules.rules[" + validator.Itoa(i) + "].min_months",
+								Message: "min_months must not be greater than max_months",
+							})
+						}
+
+						// For combined rules, validate conditions
+						if rule.Conditions != nil {
+							if rule.Conditions.MinTenureMonths != nil && *rule.Conditions.MinTenureMonths < 0 {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
+									Message: "min_tenure_months must not be negative",
+								})
+							}
+							if rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MaxTenureMonths < 0 {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.max_tenure_months",
+									Message: "max_tenure_months must not be negative",
+								})
+							}
+							// min_tenure_months must not be greater than max_tenure_months if both exist
+							if rule.Conditions.MinTenureMonths != nil && rule.Conditions.MaxTenureMonths != nil && *rule.Conditions.MinTenureMonths > *rule.Conditions.MaxTenureMonths {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.min_tenure_months",
+									Message: "min_tenure_months must not be greater than max_tenure_months",
+								})
+							}
+							// Validate employment_type in conditions if provided
+							if rule.Conditions.EmploymentType != "" && !validator.IsInSlice(rule.Conditions.EmploymentType, validEmploymentTypes) {
+								errs = append(errs, validator.ValidationError{
+									Field:   "quota_rules.rules[" + validator.Itoa(i) + "].conditions.employment_type",
+									Message: "employment_type must be one of: permanent, probation, contract, internship, freelance",
+								})
+							}
+						}
+					}
+				} else {
+					// If no rules and type is not fixed, default_quota is mandatory
+					if qr.DefaultQuota < 0 {
+						errs = append(errs, validator.ValidationError{
+							Field:   "quota_rules.default_quota",
+							Message: "default_quota is required when rules are not provided and must not be negative",
+						})
 					}
 				}
 			}
@@ -622,23 +772,6 @@ type LeaveRequestFilter struct {
 	// Sorting
 	SortBy    string `json:"sort_by"`    // ← NEW: submitted_at, employee_name, start_date
 	SortOrder string `json:"sort_order"` // ← NEW: asc, desc
-}
-
-// MyLeaveRequestFilter - Filter for /leave/requests/my (no employee filters)
-type MyLeaveRequestFilter struct {
-	// Search & Filter (no employee_id/employee_name)
-	LeaveTypeID *string `json:"leave_type_id,omitempty"`
-	Status      *string `json:"status,omitempty"`
-	StartDate   *string `json:"start_date,omitempty"`
-	EndDate     *string `json:"end_date,omitempty"`
-
-	// Pagination
-	Page  int `json:"page"`
-	Limit int `json:"limit"`
-
-	// Sorting
-	SortBy    string `json:"sort_by"`    // submitted_at, start_date, end_date, status
-	SortOrder string `json:"sort_order"` // asc, desc
 }
 
 func (f *LeaveRequestFilter) Validate() error {
@@ -732,6 +865,23 @@ func (f *LeaveRequestFilter) Validate() error {
 	}
 
 	return nil
+}
+
+// MyLeaveRequestFilter - Filter for /leave/requests/my (no employee filters)
+type MyLeaveRequestFilter struct {
+	// Search & Filter (no employee_id/employee_name)
+	LeaveTypeID *string `json:"leave_type_id,omitempty"`
+	Status      *string `json:"status,omitempty"`
+	StartDate   *string `json:"start_date,omitempty"`
+	EndDate     *string `json:"end_date,omitempty"`
+
+	// Pagination
+	Page  int `json:"page"`
+	Limit int `json:"limit"`
+
+	// Sorting
+	SortBy    string `json:"sort_by"`    // submitted_at, start_date, end_date, status
+	SortOrder string `json:"sort_order"` // asc, desc
 }
 
 func (f *MyLeaveRequestFilter) Validate() error {
@@ -1418,6 +1568,7 @@ func (r *UpdateLeaveRequestRequest) Validate() error {
 type LeaveQuotaResponse struct {
 	ID              string  `json:"id"`
 	EmployeeID      string  `json:"employee_id"`
+	EmployeeName    string  `json:"employee_name"`
 	LeaveTypeID     string  `json:"leave_type_id"`
 	LeaveTypeName   string  `json:"leave_type_name"`
 	Year            int     `json:"year"`
@@ -1457,6 +1608,14 @@ func (r *AdjustQuotaRequest) Validate() error {
 
 	if r.Year == 0 {
 		r.Year = time.Now().Year()
+	}
+
+	// Adjustment
+	if r.Adjustment == 0 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "adjustment",
+			Message: "adjustment is required and must not be zero",
+		})
 	}
 
 	if validator.IsEmpty(r.Reason) {

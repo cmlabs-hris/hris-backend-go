@@ -22,8 +22,8 @@ func (r *positionRepositoryImpl) Create(ctx context.Context, p position.Position
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		INSERT INTO positions (id, company_id, name, created_at, updated_at)
-		VALUES (uuidv7(), $1, $2, NOW(), NOW())
+		INSERT INTO positions (id, company_id, name)
+		VALUES (uuidv7(), $1, $2)
 		RETURNING id, company_id, name
 	`
 
@@ -42,26 +42,27 @@ func (r *positionRepositoryImpl) Create(ctx context.Context, p position.Position
 }
 
 // GetByID implements position.PositionRepository.
-func (r *positionRepositoryImpl) GetByID(ctx context.Context, id string) (position.Position, error) {
+func (r *positionRepositoryImpl) GetByID(ctx context.Context, id string, companyID string) (position.Position, error) {
 	q := GetQuerier(ctx, r.db)
 
 	query := `
 		SELECT id, company_id, name
 		FROM positions
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 	`
 
 	var result position.Position
-	err := q.QueryRow(ctx, query, id).Scan(
+	err := q.QueryRow(ctx, query, id, companyID).Scan(
 		&result.ID,
 		&result.CompanyID,
 		&result.Name,
 	)
 
+	if err == pgx.ErrNoRows {
+		return position.Position{}, fmt.Errorf("position not found: %w", err)
+	}
+
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return position.Position{}, fmt.Errorf("position not found")
-		}
 		return position.Position{}, fmt.Errorf("failed to get position: %w", err)
 	}
 
@@ -112,35 +113,35 @@ func (r *positionRepositoryImpl) Update(ctx context.Context, req position.Update
 
 	query := `
 		UPDATE positions 
-		SET name = $1, updated_at = NOW()
-		WHERE id = $2
+		SET name = $1
+		WHERE id = $2 AND company_id = $3
 	`
 
-	commandTag, err := q.Exec(ctx, query, req.Name, req.ID)
+	commandTag, err := q.Exec(ctx, query, req.Name, req.ID, req.CompanyID)
 	if err != nil {
 		return fmt.Errorf("failed to update position: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("position not found")
+		return fmt.Errorf("position not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil
 }
 
 // Delete implements position.PositionRepository.
-func (r *positionRepositoryImpl) Delete(ctx context.Context, id string) error {
+func (r *positionRepositoryImpl) Delete(ctx context.Context, id string, companyID string) error {
 	q := GetQuerier(ctx, r.db)
 
-	query := `DELETE FROM positions WHERE id = $1`
+	query := `DELETE FROM positions WHERE id = $1 AND company_id = $2`
 
-	commandTag, err := q.Exec(ctx, query, id)
+	commandTag, err := q.Exec(ctx, query, id, companyID)
 	if err != nil {
 		return fmt.Errorf("failed to delete position: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("position not found")
+		return fmt.Errorf("position not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil

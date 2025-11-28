@@ -12,11 +12,13 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/storage"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
+	attendanceService "github.com/cmlabs-hris/hris-backend-go/internal/service/attendance"
 	serviceAuth "github.com/cmlabs-hris/hris-backend-go/internal/service/auth"
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
+	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
 )
 
 func main() {
@@ -43,12 +45,17 @@ func main() {
 	branchRepo := postgresql.NewBranchRepository(db)
 	gradeRepo := postgresql.NewGradeRepository(db)
 	positionRepo := postgresql.NewPositionRepository(db)
+	workScheduleRepo := postgresql.NewWorkScheduleRepository(db)
+	workScheduleTimeRepo := postgresql.NewWorkScheduleTimeRepository(db)
+	workScheduleLocationRepo := postgresql.NewWorkScheduleLocationRepository(db)
+	employeeScheduleAssignmentRepo := postgresql.NewEmployeeScheduleAssignmentRepository(db)
+	attendanceRepo := postgresql.NewAttendanceRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
 	quotaCalculatorService := leave.NewQuotaCalculator()
 	quotaService := leave.NewQuotaService(db, leaveTypeRepo, leaveQuotaRepo, employeeRepo, quotaCalculatorService)
-	requestService := leave.NewRequestService(db, leaveTypeRepo, leaveQuotaRepo, employeeRepo)
+	requestService := leave.NewRequestService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo)
 	var fileStorage storage.FileStorage
 	switch cfg.Storage.Type {
 	case "local":
@@ -68,16 +75,56 @@ func main() {
 
 	fileService := file.NewFileService(fileStorage)
 	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository)
-	companyService := serviceCompany.NewCompanyService(db, companyRepo, fileService)
-	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, quotaService, requestService, fileService)
+	companyService := serviceCompany.NewCompanyService(
+		db,
+		companyRepo,
+		fileService,
+		userRepo,
+		positionRepo,
+		gradeRepo,
+		branchRepo,
+		leaveTypeRepo,
+		workScheduleRepo,
+		workScheduleTimeRepo,
+		employeeRepo,
+		quotaService,
+	)
+	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, attendanceRepo, quotaService, requestService, fileService)
 	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
+	scheduleService := scheduleService.NewScheduleService(
+		workScheduleRepo,
+		workScheduleTimeRepo,
+		workScheduleLocationRepo,
+		employeeScheduleAssignmentRepo,
+		employeeRepo,
+	)
+	attendanceService := attendanceService.NewAttendanceService(
+		db,
+		attendanceRepo,
+		employeeRepo,
+		workScheduleRepo,
+		workScheduleTimeRepo,
+		branchRepo,
+		fileService,
+	)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
 	leaveHandler := appHTTP.NewLeaveHandler(leaveService, fileService)
 	masterHandler := appHTTP.NewMasterHandler(masterService)
+	scheduleHandler := appHTTP.NewScheduleHandler(scheduleService)
+	attendanceHandler := appHTTP.NewAttendanceHandler(attendanceService)
 
-	router := appHTTP.NewRouter(JWTService, authHandler, companyHandler, leaveHandler, masterHandler, cfg.Storage.BasePath)
+	router := appHTTP.NewRouter(
+		JWTService,
+		authHandler,
+		companyHandler,
+		leaveHandler,
+		masterHandler,
+		scheduleHandler,
+		attendanceHandler,
+		cfg.Storage.BasePath,
+	)
 
 	port := fmt.Sprintf(":%d", cfg.App.Port)
 	fmt.Printf("Server running at http://localhost%s\n", port)

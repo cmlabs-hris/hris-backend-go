@@ -5,4 +5,5 @@ type Branch struct {
 	CompanyID string
 	Name      string
 	Address   *string
+	Timezone  string
 }

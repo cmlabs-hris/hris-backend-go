@@ -12,6 +12,7 @@ var (
 	ErrEmailNotVerified            = errors.New("email not verified")
 	ErrEmailVerificationTokenEmpty = errors.New("email verification token is empty")
 	ErrAdminPrivilegeRequired      = errors.New("admin privilege required")
+	ErrPendingRoleRequired         = errors.New("pending role required")
 	ErrOwnerAccessRequired         = errors.New("owner access required")
 	ErrManagerAccessRequired       = errors.New("manager access required")
 	ErrPendingRoleAccessRequired   = errors.New("pending role access required")

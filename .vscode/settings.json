@@ -1,3 +1,4 @@
 {
-    "vscord.ignore.workspacesText": ""
+    "vscord.ignore.workspacesText": "",
+    "C_Cpp.errorSquiggles": "enabled"
 }

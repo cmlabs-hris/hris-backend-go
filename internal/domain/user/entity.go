@@ -24,6 +24,9 @@ type User struct {
 	EmailVerificationSentAt *time.Time
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
+
+	// DTO / Join
+	EmployeeID *string
 }
 
 // IsOwner checks if user is company owner

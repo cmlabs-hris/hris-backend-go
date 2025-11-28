@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -103,7 +103,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Group(func(r chi.Router) {
 						r.Use(middleware.RequireOwner)
 						r.Post("/", leaveHandler.CreateType)
-						r.Patch("/{id}", leaveHandler.UpdateType)
+						r.Put("/{id}", leaveHandler.UpdateType)
 						r.Delete("/{id}", leaveHandler.DeleteType)
 					})
 
@@ -113,7 +113,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Group(func(r chi.Router) {
 						r.Use(middleware.RequireOwner)
 						r.Get("/", leaveHandler.ListQuota)
-						r.Post("/", leaveHandler.SetQuota)
+						// r.Post("/", leaveHandler.SetQuota)
 						r.Post("/adjust", leaveHandler.AdjustQuota)
 					})
 					r.Get("/my", leaveHandler.GetMyQuota)
@@ -128,7 +128,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 						r.Post("/{id}/reject", leaveHandler.RejectRequest)
 					})
 					r.Post("/", leaveHandler.CreateRequest)
-					r.Post("/{id}", leaveHandler.GetRequest)
+					r.Get("/{id}", leaveHandler.GetRequest)
 					r.Get("/my", leaveHandler.GetMyRequests)
 				})
 			})
@@ -176,6 +176,68 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 						r.Delete("/{id}", masterHandler.DeletePosition)
 					})
 				})
+			})
+
+			r.Route("/schedule", func(r chi.Router) {
+				// Work Schedule
+				r.Get("/", scheduleHandler.ListWorkSchedules)   // All
+				r.Get("/{id}", scheduleHandler.GetWorkSchedule) // All
+
+				r.Get("/{scheduleID}/employee/{employeeID}", scheduleHandler.AssignSchedule)
+				r.Put("/{assignID}/employee/{employeeID}", scheduleHandler.UpdateEmployeeScheduleAssignment)
+				r.Delete("/{assignID}/employee/{employeeID}", scheduleHandler.DeleteEmployeeScheduleAssignment)
+				// Employee Schedule Timeline
+				r.Get("/employee/{id}", scheduleHandler.GetEmployeeScheduleTimeline) // All - Get timeline for specific employee
+
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOwner)
+					r.Post("/", scheduleHandler.CreateWorkSchedule)       // Owner
+					r.Put("/{id}", scheduleHandler.UpdateWorkSchedule)    // Owner
+					r.Delete("/{id}", scheduleHandler.DeleteWorkSchedule) // Owner
+				})
+
+				// Work Schedule Times
+				r.Route("/times", func(r chi.Router) {
+					r.Get("/{id}", scheduleHandler.GetWorkScheduleTime) // All
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Post("/", scheduleHandler.CreateWorkScheduleTime)       // Owner
+						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleTime)    // Owner
+						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleTime) // Owner
+					})
+				})
+
+				// Work Schedule Locations
+				r.Route("/locations", func(r chi.Router) {
+					r.Get("/{id}", scheduleHandler.GetWorkScheduleLocation) // All
+					r.Group(func(r chi.Router) {
+						r.Post("/", scheduleHandler.CreateWorkScheduleLocation)       // Owner
+						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleLocation)    // Owner
+						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleLocation) // Owner
+					})
+				})
+
+			})
+
+			// Employee Schedule Assignments
+			r.Route("/employee-schedules", func(r chi.Router) {
+				r.Get("/", scheduleHandler.ListEmployeeScheduleAssignments)    // All (filtered by employee_id)
+				r.Get("/active", scheduleHandler.GetActiveScheduleForEmployee) // All
+				r.Get("/{id}", scheduleHandler.GetEmployeeScheduleAssignment)  // All
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireManager)
+					r.Post("/", scheduleHandler.CreateEmployeeScheduleAssignment)       // Owner
+					r.Put("/{id}", scheduleHandler.UpdateEmployeeScheduleAssignment)    // Owner
+					r.Delete("/{id}", scheduleHandler.DeleteEmployeeScheduleAssignment) // Owner
+				})
+			})
+
+			// Attendance Routes
+			r.Route("/attendance", func(r chi.Router) {
+				r.Get("/", attendanceHandler.List)               // All with filters
+				r.Get("/my", attendanceHandler.GetMyAttendance)  // Get my attendance records
+				r.Post("/clock-in", attendanceHandler.ClockIn)   // Clock in
+				r.Post("/clock-out", attendanceHandler.ClockOut) // Clock out
 			})
 
 			// r.Route("/employees", func(r chi.Router) {

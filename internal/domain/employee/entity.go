@@ -6,7 +6,7 @@ type Employee struct {
 	ID                    string
 	UserID                string
 	CompanyID             string
-	WorkScheduleID        *string
+	WorkScheduleID        string
 	PositionID            string
 	GradeID               string
 	BranchID              string

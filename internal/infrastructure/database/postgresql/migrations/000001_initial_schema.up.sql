@@ -2,6 +2,8 @@
 -- Initial HRIS Database Schema
 -- =========================
 
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+
 -- Table: companies
 -- Stores client companies.
 CREATE TABLE companies (
@@ -88,7 +90,11 @@ CREATE TABLE branches (
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(100) NOT NULL,
     address TEXT,
-    UNIQUE(company_id, name)
+    timezone VARCHAR(50) NOT NULL DEFAULT 'Asia/Jakarta',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE(company_id, name),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
 -- Enum: employment_type_enum
@@ -116,6 +122,11 @@ CREATE TABLE work_schedules (
     company_id UUID NOT NULL REFERENCES companies(id),
     name VARCHAR(255) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('WFO', 'WFA', 'Hybrid')),
+    grace_period_minutes SMALLINT NOT NULL DEFAULT 15, 
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
     UNIQUE(company_id, name)
 );
 
@@ -125,7 +136,7 @@ CREATE TABLE employees (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     company_id UUID NOT NULL REFERENCES companies(id),
-    work_schedule_id UUID REFERENCES work_schedules(id), -- Default schedule
+    work_schedule_id UUID NOT NULL REFERENCES work_schedules(id), -- Default schedule
     position_id UUID NOT NULL REFERENCES positions(id),
     grade_id UUID NOT NULL REFERENCES grades(id),
     branch_id UUID NOT NULL REFERENCES branches(id),
@@ -133,9 +144,9 @@ CREATE TABLE employees (
     -- Personal & employment data
     employee_code VARCHAR(50) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
-    nik VARCHAR(16) NOT NULL, -- Indonesian national ID
+    nik VARCHAR(16), -- Indonesian national ID
     gender VARCHAR(10) CHECK (gender IN ('Male', 'Female')),
-    phone_number VARCHAR(13) NOT NULL,
+    phone_number VARCHAR(13),
     address TEXT,
     place_of_birth VARCHAR(100),
     dob DATE,
@@ -150,9 +161,9 @@ CREATE TABLE employees (
     warning_letter VARCHAR(10) CHECK (warning_letter IS NULL OR warning_letter IN ('light', 'medium', 'heavy')),
 
     -- Bank info
-    bank_name VARCHAR(50) NOT NULL,
+    bank_name VARCHAR(50),
     bank_account_holder_name VARCHAR(255),
-    bank_account_number VARCHAR(50) NOT NULL,
+    bank_account_number VARCHAR(50),
 
     -- Timestamps
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -161,8 +172,8 @@ CREATE TABLE employees (
     deleted_at TIMESTAMPTZ,
     UNIQUE(company_id, nik),
     UNIQUE(company_id, employee_code),
-    CONSTRAINT chk_nik_length CHECK (char_length(nik) = 16 AND nik <> ''),
-    CONSTRAINT chk_phone_number_length CHECK (char_length(phone_number) >= 10 AND char_length(phone_number) <= 13)
+    CONSTRAINT chk_nik_length CHECK (nik IS NULL OR char_length(nik) = 16),
+    CONSTRAINT chk_phone_number_length CHECK (phone_number IS NULL OR (char_length(phone_number) >= 10 AND char_length(phone_number) <= 13))
 );
 
 -- Table: work_schedule_times
@@ -175,13 +186,16 @@ CREATE TABLE work_schedule_times (
     break_start_time TIME,
     break_end_time TIME,
     clock_out_time TIME NOT NULL,
+    is_next_day_checkout BOOLEAN NOT NULL DEFAULT false,
     location_type VARCHAR(10) NOT NULL DEFAULT 'WFO',
-    CONSTRAINT chk_clock_out_after_clock_in CHECK (clock_out_time > clock_in_time),
-    CONSTRAINT chk_break_start_after_clock_in CHECK (break_start_time IS NULL OR break_start_time >= clock_in_time),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
     CONSTRAINT chk_break_end_required_if_break_start CHECK (
         break_start_time IS NULL OR break_end_time IS NOT NULL
     ),
-    CONSTRAINT chk_location_type CHECK (location_type IN ('WFO', 'WFA', 'Hybrid'))
+    CONSTRAINT chk_location_type CHECK (location_type IN ('WFO', 'WFA', 'Hybrid')),
+    UNIQUE(work_schedule_id, day_of_week)
 );
 
 -- Table: work_schedule_locations
@@ -192,7 +206,10 @@ CREATE TABLE work_schedule_locations (
     location_name VARCHAR(255) NOT NULL,
     latitude DOUBLE PRECISION NOT NULL,
     longitude DOUBLE PRECISION NOT NULL,
-    radius_meters INT NOT NULL
+    radius_meters INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at)
 );
 
 -- Table: employee_schedule_assignments
@@ -202,7 +219,15 @@ CREATE TABLE employee_schedule_assignments (
     employee_id UUID NOT NULL REFERENCES employees(id),
     work_schedule_id UUID NOT NULL REFERENCES work_schedules(id),
     start_date DATE NOT NULL,
-    end_date DATE NOT NULL
+    end_date DATE NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_end_date_after_start CHECK (end_date >= start_date),
+    CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
+    CONSTRAINT no_overlapping_schedules EXCLUDE USING GIST (
+        employee_id WITH =,  -- Jika employee_id SAMA
+        daterange(start_date, end_date, '[]') WITH && -- DAN tanggal BERIRISAN
+    )
 );
 
 -- Table: leave_types
@@ -220,7 +245,7 @@ CREATE TABLE leave_types (
     -- Policy Rules
     is_active BOOLEAN NOT NULL DEFAULT true,
     requires_approval BOOLEAN NOT NULL DEFAULT true,
-    requires_attachment BOOLEAN NOT NULL DEFAULT false,
+    requires_attachment BOOLEAN NOT NULL DEFAULT true,
     attachment_required_after_days SMALLINT, -- e.g., sick leave > 2 days need doctor note
     
     -- Quota Rules
@@ -260,7 +285,7 @@ CREATE TABLE attendances (
     employee_id UUID NOT NULL REFERENCES employees(id),
     date DATE NOT NULL,
     work_schedule_time_id UUID REFERENCES work_schedule_times(id),
-    actual_location_type VARCHAR(10) NOT NULL,
+    actual_location_type VARCHAR(10),
     clock_in TIMESTAMPTZ,
     clock_out TIMESTAMPTZ,
     work_hours_in_minutes SMALLINT,
@@ -276,6 +301,9 @@ CREATE TABLE attendances (
     approved_at TIMESTAMPTZ,
     rejection_reason TEXT,
     leave_type_id UUID REFERENCES leave_types(id), -- Reference if status is 'leave'
+    late_minutes SMALLINT, 
+    early_leave_minutes SMALLINT,
+    overtime_minutes SMALLINT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_updated_at_not_before_created_at CHECK (updated_at >= created_at),
@@ -467,29 +495,141 @@ CREATE TABLE audit_trails (
 
 -- =========================
 -- Indexes for Performance
+-- Based on Repository Query Patterns Analysis
 -- =========================
 
--- Frequently used columns for filtering/searching
+-- Enable pg_trgm for text search optimization
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+-- =====================
+-- USERS TABLE
+-- =====================
 CREATE INDEX idx_users_company_id ON users(company_id);
+
+-- =====================
+-- EMPLOYEES TABLE
+-- =====================
 CREATE INDEX idx_employees_company_id ON employees(company_id);
 CREATE INDEX idx_employees_user_id ON employees(user_id);
 CREATE INDEX idx_employees_position_id ON employees(position_id);
 CREATE INDEX idx_employees_grade_id ON employees(grade_id);
 CREATE INDEX idx_employees_branch_id ON employees(branch_id);
+-- Query: GetActiveByCompanyID (WHERE company_id = ? AND employment_status = 'active')
+CREATE INDEX idx_employees_company_status ON employees(company_id, employment_status);
+-- Query: GetByCompanyID with name search (ILIKE on full_name)
+CREATE INDEX idx_employees_full_name_trgm ON employees USING gin(full_name gin_trgm_ops);
+
+-- =====================
+-- LEAVE_TYPES TABLE
+-- =====================
+-- Query: GetByCompanyID, GetActiveByCompanyID (WHERE company_id = ? AND is_active = true)
+CREATE INDEX idx_leave_types_company_id ON leave_types(company_id);
+CREATE INDEX idx_leave_types_company_active ON leave_types(company_id, is_active) WHERE is_active = true;
+
+-- =====================
+-- LEAVE_QUOTAS TABLE
+-- =====================
+-- Query: GetByEmployee (WHERE employee_id = ?)
+CREATE INDEX idx_leave_quotas_employee_id ON leave_quotas(employee_id);
+-- Query: GetByEmployeeYear (WHERE employee_id = ? AND year = ?)
+CREATE INDEX idx_leave_quotas_employee_year ON leave_quotas(employee_id, year);
+-- Optimize leave_quotas JOIN employees JOIN leave_types  
+CREATE INDEX idx_leave_quotas_composite ON leave_quotas(employee_id, leave_type_id, year DESC);
+
+-- =====================
+-- LEAVE_REQUESTS TABLE  
+-- =====================
+CREATE INDEX idx_leave_requests_employee_id ON leave_requests(employee_id);
+CREATE INDEX idx_leave_requests_status ON leave_requests(status);
+-- Query: GetByEmployeeID with filters (WHERE employee_id = ? AND status = ? AND leave_type_id = ?)
+CREATE INDEX idx_leave_requests_employee_leave_type ON leave_requests(employee_id, leave_type_id);
+-- Query: CheckOverlapping (WHERE employee_id = ? AND status IN ('waiting_approval', 'approved') AND date range)
+CREATE INDEX idx_leave_requests_employee_date_overlap ON leave_requests(employee_id, status, start_date, end_date);
+-- Query: Sorting by submitted_at (ORDER BY submitted_at DESC)
+CREATE INDEX idx_leave_requests_submitted_at ON leave_requests(submitted_at DESC);
+-- Optimize leave_requests JOIN employees JOIN leave_types
+CREATE INDEX idx_leave_requests_composite ON leave_requests(employee_id, leave_type_id, status, submitted_at DESC);
+
+-- =====================
+-- ATTENDANCES TABLE
+-- =====================
 CREATE INDEX idx_attendances_employee_id ON attendances(employee_id);
 CREATE INDEX idx_attendances_date ON attendances(date);
 CREATE INDEX idx_attendances_employee_date ON attendances(employee_id, date);
-CREATE INDEX idx_leave_requests_employee_id ON leave_requests(employee_id);
-CREATE INDEX idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX idx_attendances_company_id ON attendances(company_id);
+-- Query: GetOpenSession (WHERE employee_id = ? AND clock_out IS NULL ORDER BY clock_in DESC)
+CREATE INDEX idx_attendances_employee_open_session ON attendances(employee_id, clock_in DESC) WHERE clock_out IS NULL;
+-- Query: Update (WHERE id = ? AND company_id = ?)
+CREATE INDEX idx_attendances_id_company ON attendances(id, company_id);
+
+-- =====================
+-- WORK_SCHEDULES TABLE
+-- =====================
+CREATE INDEX idx_work_schedules_company_id ON work_schedules (company_id);
+CREATE INDEX idx_work_schedules_type ON work_schedules (type);
+CREATE INDEX idx_work_schedules_deleted_at ON work_schedules (deleted_at);
+CREATE UNIQUE INDEX idx_unique_schedule_name ON work_schedules (company_id, name) WHERE deleted_at IS NULL;
+-- Query: GetByCompanyID with filters (WHERE company_id = ? AND deleted_at IS NULL AND name ILIKE ?)
+CREATE INDEX idx_work_schedules_name_trgm ON work_schedules USING gin(name gin_trgm_ops);
+-- Query: GetByID (WHERE id = ? AND company_id = ? AND deleted_at IS NULL)
+CREATE INDEX idx_work_schedules_id_company_active ON work_schedules(id, company_id) WHERE deleted_at IS NULL;
+
+-- =====================
+-- WORK_SCHEDULE_TIMES TABLE
+-- =====================
+-- Query: GetByWorkScheduleID (WHERE work_schedule_id = ? ORDER BY day_of_week)
+CREATE INDEX idx_work_schedule_times_schedule_id ON work_schedule_times(work_schedule_id);
+
+-- =====================
+-- WORK_SCHEDULE_LOCATIONS TABLE
+-- =====================
+-- Query: GetByWorkScheduleID (WHERE work_schedule_id = ?)
+CREATE INDEX idx_work_schedule_locations_schedule_id ON work_schedule_locations(work_schedule_id);
+
+-- =====================
+-- EMPLOYEE_SCHEDULE_ASSIGNMENTS TABLE
+-- =====================
+-- Query: GetByEmployeeID (WHERE employee_id = ? ORDER BY start_date DESC)
+CREATE INDEX idx_employee_schedule_assignments_employee_id ON employee_schedule_assignments(employee_id);
+-- Query: GetActiveSchedule (WHERE employee_id = ? AND date BETWEEN start_date AND end_date)
+CREATE INDEX idx_employee_schedule_assignments_employee_dates ON employee_schedule_assignments(employee_id, start_date, end_date);
+-- Query: GetScheduleAssignments with date range overlap
+CREATE INDEX idx_employee_schedule_assignments_date_range ON employee_schedule_assignments(employee_id, start_date DESC);
+
+-- =====================
+-- REFRESH_TOKENS TABLE
+-- =====================
+-- Query: Token lookup by user_id and expiry
+CREATE INDEX idx_refresh_tokens_user_expires ON refresh_tokens(user_id, expires_at) WHERE revoked_at IS NULL;
+
+-- =====================
+-- EMPLOYEE_DOCUMENTS TABLE
+-- =====================
 CREATE INDEX idx_employee_documents_employee_id ON employee_documents(employee_id);
+
+-- =====================
+-- EMPLOYEE_JOB_HISTORY TABLE
+-- =====================
 CREATE INDEX idx_employee_job_history_employee_id ON employee_job_history(employee_id);
 CREATE INDEX idx_employee_job_history_position_id ON employee_job_history(position_id);
 CREATE INDEX idx_employee_job_history_grade_id ON employee_job_history(grade_id);
 CREATE INDEX idx_employee_job_history_branch_id ON employee_job_history(branch_id);
 CREATE INDEX idx_employee_job_history_work_schedule_id ON employee_job_history(work_schedule_id);
+-- Query: Historical lookups by employee and date
+CREATE INDEX idx_employee_job_history_employee_dates ON employee_job_history(employee_id, start_date DESC);
 
--- Indexes for audit trail queries
+-- =====================
+-- AUDIT_TRAILS TABLE
+-- =====================
 CREATE INDEX idx_audit_trails_record ON audit_trails (table_name, record_id);
 CREATE INDEX idx_audit_trails_user ON audit_trails (user_id);
+-- Query: GetByUserId with date range
+CREATE INDEX idx_audit_trails_user_created ON audit_trails(user_id, created_at DESC);
+
+-- =====================
+-- PUBLIC_HOLIDAYS TABLE
+-- =====================
+-- Query: GetByCompanyID and date range (for leave calculation)
+CREATE INDEX idx_public_holidays_company_date_range ON public_holidays(company_id, date);
 
 -- End of schema

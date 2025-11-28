@@ -56,7 +56,7 @@ func (a *AuthServiceImpl) ForgotPassword(ctx context.Context, req auth.RefreshTo
 func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest, sessionTrackReq auth.SessionTrackingRequest) (auth.TokenResponse, error) {
 	var tokenResponse auth.TokenResponse
 
-	// Langsung ambil user, error jika tidak ada
+	// Get user with employee_id in one query
 	userData, err := a.UserRepository.GetByEmail(ctx, loginReq.Email)
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -65,7 +65,7 @@ func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest,
 		return auth.TokenResponse{}, fmt.Errorf("failed to get user by email: %w", err)
 	}
 
-	// Cek password
+	// Check password
 	if userData.PasswordHash == nil {
 		return auth.TokenResponse{}, auth.ErrInvalidCredentials
 	}
@@ -77,7 +77,14 @@ func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest,
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
+		// Now you can use userData.EmployeeID directly - it will be nil if user has no employee record
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(
+			userData.ID,
+			userData.Email,
+			userData.EmployeeID, // Pass employee_id from the user entity
+			userData.CompanyID,
+			userData.Role,
+		)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -139,7 +146,7 @@ func (a *AuthServiceImpl) LoginWithEmployeeCode(ctx context.Context, loginEmploy
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -212,7 +219,7 @@ func (a *AuthServiceImpl) LoginWithGoogle(ctx context.Context, googleEmail strin
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -301,7 +308,7 @@ func (a *AuthServiceImpl) RefreshToken(ctx context.Context, req auth.RefreshToke
 
 	// 5. Generate new access token
 	accessTokenResponse.AccessToken, accessTokenResponse.AccessTokenExpiresIn, err =
-		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.Role)
+		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
 	if err != nil {
 		return auth.AccessTokenResponse{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -324,38 +331,6 @@ func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.Registe
 	if userData.ID != "" {
 		return auth.TokenResponse{}, auth.ErrEmailAlreadyExists
 	}
-
-	// if OAuthExists {
-	// 	hashedPassword, err := a.hashPassword(registerReq.Password)
-	// 	if err != nil {
-	// 		return auth.TokenResponse{}, fmt.Errorf("failed to hash password: %w", err)
-	// 	}
-	// 	if _, err := a.UserRepository.LinkPasswordAccount(ctx, userData.ID, hashedPassword); err != nil {
-	// 		return auth.TokenResponse{}, fmt.Errorf("failed to link password account: %w", err)
-	// 	}
-	// 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
-	// 		txCtx := context.WithValue(ctx, "tx", tx)
-
-	// 		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.CompanyID, userData.IsAdmin)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to create access token: %w", err)
-	// 		}
-	// 		tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn, err = a.Service.GenerateRefreshToken(userData.ID)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to create refresh token: %w", err)
-	// 		}
-
-	// 		err = a.CreateRefreshToken(txCtx, userData.ID, tokenResponse.RefreshToken, tokenResponse.RefreshTokenExpiresIn, sessionTrackReq)
-	// 		if err != nil {
-	// 			return fmt.Errorf("failed to save refresh token to database: %w", err)
-	// 		}
-	// 		return nil
-	// 	})
-	// 	if err != nil {
-	// 		return auth.TokenResponse{}, err
-	// 	}
-	// 	return tokenResponse, nil
-	// }
 
 	// Hash the password before storing
 	hashedPassword, err := a.hashPassword(registerReq.Password)
@@ -381,7 +356,7 @@ func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.Registe
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, newUser.Role)
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, nil, newUser.Role)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}

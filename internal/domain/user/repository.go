@@ -11,4 +11,6 @@ type UserRepository interface {
 	ExistsByIDOrEmail(ctx context.Context, id, email *string) (bool, error)
 	LinkGoogleAccount(ctx context.Context, GoogleID string, email string) (User, error)
 	LinkPasswordAccount(ctx context.Context, id string, password string) (User, error)
+	UpdateRole(ctx context.Context, req UpdateUserRoleRequest) error
+	Update(ctx context.Context, req UpdateUserRequest) error
 }

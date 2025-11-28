@@ -11,6 +11,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/jwtauth/v5"
 )
 
 type LeaveHandler interface {
@@ -168,12 +169,14 @@ func (l *LeaveHandlerImpl) CreateType(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
+		slog.Error("CreateType validation error", "error", err)
 		response.HandleError(w, err)
 		return
 	}
 
 	leaveType, err := l.leaveService.CreateLeaveType(r.Context(), req)
 	if err != nil {
+		slog.Error("CreateType service error", "error", err)
 		response.HandleError(w, err)
 		return
 	}
@@ -199,8 +202,19 @@ func (l *LeaveHandlerImpl) DeleteType(w http.ResponseWriter, r *http.Request) {
 
 // GetMyQuota implements LeaveHandler.
 func (l *LeaveHandlerImpl) GetMyQuota(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(string)
-	leaveQuota, err := l.leaveService.GetMyQuota(r.Context(), userID, time.Now().Year())
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	employeeID, ok := claims["employee_id"].(string)
+	if !ok || employeeID == "" {
+		response.Unauthorized(w, "employee_id claim is missing or invalid")
+		return
+	}
+
+	leaveQuota, err := l.leaveService.GetMyQuota(r.Context(), employeeID, time.Now().Year())
 	if err != nil {
 		response.HandleError(w, err)
 		return
@@ -212,8 +226,24 @@ func (l *LeaveHandlerImpl) GetMyQuota(w http.ResponseWriter, r *http.Request) {
 // GetMyRequests implements LeaveHandler.
 func (l *LeaveHandlerImpl) GetMyRequests(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	employeeID := ctx.Value("employee_id").(string)
-	companyID := ctx.Value("company_id").(string)
+
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	employeeID, ok := claims["employee_id"].(string)
+	if !ok || employeeID == "" {
+		response.Unauthorized(w, "employee_id claim is missing or invalid")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id claim is missing or invalid")
+		return
+	}
 
 	// Parse query parameters
 	filter := leave.MyLeaveRequestFilter{}
@@ -292,9 +322,21 @@ func (l *LeaveHandlerImpl) GetRequest(w http.ResponseWriter, r *http.Request) {
 
 // ListQuota implements LeaveHandler.
 func (l *LeaveHandlerImpl) ListQuota(w http.ResponseWriter, r *http.Request) {
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id claim is missing or invalid")
+		return
+	}
+
 	leaveTypeResponse, err := l.leaveService.ListLeaveQuota(r.Context(), companyID)
 	if err != nil {
+		slog.Error("ListQuota service error", "error", err)
 		response.HandleError(w, err)
 		return
 	}
@@ -305,7 +347,18 @@ func (l *LeaveHandlerImpl) ListQuota(w http.ResponseWriter, r *http.Request) {
 // ListRequests implements LeaveHandler.
 func (l *LeaveHandlerImpl) ListRequests(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	companyID := ctx.Value("company_id").(string)
+
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id claim is missing or invalid")
+		return
+	}
 
 	// Parse query parameters
 	filter := leave.LeaveRequestFilter{}
@@ -380,7 +433,18 @@ func (l *LeaveHandlerImpl) ListRequests(w http.ResponseWriter, r *http.Request) 
 
 // ListTypes implements LeaveHandler.
 func (l *LeaveHandlerImpl) ListTypes(w http.ResponseWriter, r *http.Request) {
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id claim is missing or invalid")
+		return
+	}
+
 	leaveTypes, err := l.leaveService.ListLeaveType(r.Context(), companyID)
 	if err != nil {
 		response.HandleError(w, err)
@@ -434,6 +498,8 @@ func (l *LeaveHandlerImpl) UpdateType(w http.ResponseWriter, r *http.Request) {
 		response.BadRequest(w, "Invalid request format", nil)
 		return
 	}
+
+	req.ID = leaveTypeID
 
 	if err := req.Validate(); err != nil {
 		response.HandleError(w, err)

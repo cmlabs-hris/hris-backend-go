@@ -10,6 +10,7 @@ type BranchResponse struct {
 	CompanyID string  `json:"company_id"`
 	Name      string  `json:"name"`
 	Address   *string `json:"address,omitempty"`
+	Timezone  string  `json:"timezone"`
 }
 
 // CreateBranchRequest represents the request structure for creating a branch.
@@ -53,9 +54,11 @@ func (r *CreateBranchRequest) Validate() error {
 
 // UpdateBranchRequest represents the request structure for updating a branch.
 type UpdateBranchRequest struct {
-	ID      string  `json:"id"`
-	Name    *string `json:"name,omitempty"`
-	Address *string `json:"address,omitempty"`
+	ID        string  `json:"id"`
+	CompanyID string  `json:"-"` // From JWT
+	Name      *string `json:"name,omitempty"`
+	Address   *string `json:"address,omitempty"`
+	Timezone  *string `json:"timezone,omitempty"`
 }
 
 func (r *UpdateBranchRequest) Validate() error {
@@ -81,6 +84,26 @@ func (r *UpdateBranchRequest) Validate() error {
 			errs = append(errs, validator.ValidationError{
 				Field:   "name",
 				Message: "name must not exceed 100 characters",
+			})
+		}
+	}
+
+	// Address
+	if r.Address != nil {
+		if validator.IsEmpty(*r.Address) {
+			errs = append(errs, validator.ValidationError{
+				Field:   "address",
+				Message: "address must not be empty",
+			})
+		}
+	}
+
+	// Timezone
+	if r.Timezone != nil {
+		if validator.IsEmpty(*r.Timezone) {
+			errs = append(errs, validator.ValidationError{
+				Field:   "timezone",
+				Message: "timezone must not be empty if provided",
 			})
 		}
 	}

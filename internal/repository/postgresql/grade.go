@@ -22,8 +22,8 @@ func (r *gradeRepositoryImpl) Create(ctx context.Context, g grade.Grade) (grade.
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		INSERT INTO grades (id, company_id, name, created_at, updated_at)
-		VALUES (uuidv7(), $1, $2, NOW(), NOW())
+		INSERT INTO grades (id, company_id, name)
+		VALUES (uuidv7(), $1, $2)
 		RETURNING id, company_id, name
 	`
 
@@ -42,26 +42,27 @@ func (r *gradeRepositoryImpl) Create(ctx context.Context, g grade.Grade) (grade.
 }
 
 // GetByID implements grade.GradeRepository.
-func (r *gradeRepositoryImpl) GetByID(ctx context.Context, id string) (grade.Grade, error) {
+func (r *gradeRepositoryImpl) GetByID(ctx context.Context, id string, companyID string) (grade.Grade, error) {
 	q := GetQuerier(ctx, r.db)
 
 	query := `
 		SELECT id, company_id, name
 		FROM grades
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 	`
 
 	var result grade.Grade
-	err := q.QueryRow(ctx, query, id).Scan(
+	err := q.QueryRow(ctx, query, id, companyID).Scan(
 		&result.ID,
 		&result.CompanyID,
 		&result.Name,
 	)
 
+	if err == pgx.ErrNoRows {
+		return grade.Grade{}, fmt.Errorf("grade not found: %w", err)
+	}
+
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return grade.Grade{}, fmt.Errorf("grade not found")
-		}
 		return grade.Grade{}, fmt.Errorf("failed to get grade: %w", err)
 	}
 
@@ -112,35 +113,35 @@ func (r *gradeRepositoryImpl) Update(ctx context.Context, req grade.UpdateGradeR
 
 	query := `
 		UPDATE grades 
-		SET name = $1, updated_at = NOW()
-		WHERE id = $2
+		SET name = $1
+		WHERE id = $2 AND company_id = $3
 	`
 
-	commandTag, err := q.Exec(ctx, query, req.Name, req.ID)
+	commandTag, err := q.Exec(ctx, query, req.Name, req.ID, req.CompanyID)
 	if err != nil {
 		return fmt.Errorf("failed to update grade: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("grade not found")
+		return fmt.Errorf("grade not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil
 }
 
 // Delete implements grade.GradeRepository.
-func (r *gradeRepositoryImpl) Delete(ctx context.Context, id string) error {
+func (r *gradeRepositoryImpl) Delete(ctx context.Context, id string, companyID string) error {
 	q := GetQuerier(ctx, r.db)
 
-	query := `DELETE FROM grades WHERE id = $1`
+	query := `DELETE FROM grades WHERE id = $1 AND company_id = $2`
 
-	commandTag, err := q.Exec(ctx, query, id)
+	commandTag, err := q.Exec(ctx, query, id, companyID)
 	if err != nil {
 		return fmt.Errorf("failed to delete grade: %w", err)
 	}
 
 	if commandTag.RowsAffected() == 0 {
-		return fmt.Errorf("grade not found")
+		return fmt.Errorf("grade not found: %w", pgx.ErrNoRows)
 	}
 
 	return nil

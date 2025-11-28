@@ -32,8 +32,9 @@ func (s *LocalStorage) Upload(ctx context.Context, file io.Reader, path string, 
 	cleanPath := filepath.Clean(path)
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
-	// Ensure file is within basePath
-	if !strings.HasPrefix(fullPath, s.basePath) {
+	// Ensure file is within basePath (use filepath.Clean on basePath too for consistent comparison)
+	cleanBasePath := filepath.Clean(s.basePath)
+	if !strings.HasPrefix(fullPath, cleanBasePath) {
 		return "", fmt.Errorf("invalid file path: %s", path)
 	}
 
@@ -64,8 +65,9 @@ func (s *LocalStorage) Download(ctx context.Context, path string) (io.ReadCloser
 	cleanPath := filepath.Clean(path)
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
-	// Security check
-	if !strings.HasPrefix(fullPath, s.basePath) {
+	// Security check (use filepath.Clean on basePath for consistent comparison)
+	cleanBasePath := filepath.Clean(s.basePath)
+	if !strings.HasPrefix(fullPath, cleanBasePath) {
 		return nil, fmt.Errorf("invalid file path: %s", path)
 	}
 
@@ -84,8 +86,9 @@ func (s *LocalStorage) Delete(ctx context.Context, path string) error {
 	cleanPath := filepath.Clean(path)
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
-	// Security check
-	if !filepath.HasPrefix(fullPath, s.basePath) {
+	// Security check (use filepath.Clean for consistent comparison)
+	cleanBasePath := filepath.Clean(s.basePath)
+	if !strings.HasPrefix(fullPath, cleanBasePath) {
 		return fmt.Errorf("invalid file path: %s", path)
 	}
 
@@ -110,8 +113,9 @@ func (s *LocalStorage) Exists(ctx context.Context, path string) (bool, error) {
 	cleanPath := filepath.Clean(path)
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
-	// Security check
-	if !filepath.HasPrefix(fullPath, s.basePath) {
+	// Security check (use filepath.Clean for consistent comparison)
+	cleanBasePath := filepath.Clean(s.basePath)
+	if !strings.HasPrefix(fullPath, cleanBasePath) {
 		return false, fmt.Errorf("invalid file path: %s", path)
 	}
 

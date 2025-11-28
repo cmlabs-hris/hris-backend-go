@@ -20,13 +20,17 @@ func (r *leaveQuotaRepositoryImpl) GetByCompanyID(ctx context.Context, companyID
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, employee_id, leave_type_id, year,
-			   opening_balance, earned_quota, rollover_quota, adjustment_quota,
-			   used_quota, pending_quota, available_quota, rollover_expiry_date,
-			   created_at, updated_at
-		FROM leave_quotas
-		WHERE company_id = $1
-		ORDER BY year DESC, leave_type_id
+		SELECT lq.id, lq.employee_id, lq.leave_type_id, lq.year,
+			   lq.opening_balance, lq.earned_quota, lq.rollover_quota, lq.adjustment_quota,
+			   lq.used_quota, lq.pending_quota, lq.available_quota, lq.rollover_expiry_date,
+			   lq.created_at, lq.updated_at,
+			   e.full_name AS employee_name,
+			   lt.name AS leave_type_name
+		FROM leave_quotas lq
+		JOIN employees e ON lq.employee_id = e.id
+		JOIN leave_types lt ON lq.leave_type_id = lt.id
+		WHERE e.company_id = $1
+		ORDER BY lq.year DESC, lt.name
 	`
 
 	rows, err := q.Query(ctx, query, companyID)
@@ -43,6 +47,7 @@ func (r *leaveQuotaRepositoryImpl) GetByCompanyID(ctx context.Context, companyID
 			&quota.OpeningBalance, &quota.EarnedQuota, &quota.RolloverQuota, &quota.AdjustmentQuota,
 			&quota.UsedQuota, &quota.PendingQuota, &quota.AvailableQuota, &quota.RolloverExpiryDate,
 			&quota.CreatedAt, &quota.UpdatedAt,
+			&quota.EmployeeName, &quota.LeaveTypeName,
 		); err != nil {
 			return nil, err
 		}

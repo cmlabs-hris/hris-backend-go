@@ -10,6 +10,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/jwtauth/v5"
 )
 
 type MasterHandler interface {
@@ -51,7 +52,17 @@ func (h *masterHandlerImpl) CreateBranch(w http.ResponseWriter, r *http.Request)
 	var req branch.CreateBranchRequest
 
 	// Get company ID from context
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 	req.CompanyID = companyID
 
 	// Decode request body
@@ -83,7 +94,17 @@ func (h *masterHandlerImpl) GetBranch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *masterHandlerImpl) ListBranches(w http.ResponseWriter, r *http.Request) {
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 
 	results, err := h.masterService.ListBranches(r.Context(), companyID)
 	if err != nil {
@@ -129,7 +150,17 @@ func (h *masterHandlerImpl) DeleteBranch(w http.ResponseWriter, r *http.Request)
 func (h *masterHandlerImpl) CreateGrade(w http.ResponseWriter, r *http.Request) {
 	var req grade.CreateGradeRequest
 
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request format", nil)
@@ -158,7 +189,17 @@ func (h *masterHandlerImpl) GetGrade(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *masterHandlerImpl) ListGrades(w http.ResponseWriter, r *http.Request) {
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 
 	results, err := h.masterService.ListGrades(r.Context(), companyID)
 	if err != nil {
@@ -204,7 +245,17 @@ func (h *masterHandlerImpl) DeleteGrade(w http.ResponseWriter, r *http.Request) 
 func (h *masterHandlerImpl) CreatePosition(w http.ResponseWriter, r *http.Request) {
 	var req position.CreatePositionRequest
 
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, "Invalid request format", nil)
@@ -233,7 +284,17 @@ func (h *masterHandlerImpl) GetPosition(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *masterHandlerImpl) ListPositions(w http.ResponseWriter, r *http.Request) {
-	companyID := r.Context().Value("company_id").(string)
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.Unauthorized(w, "Failed to extract claims from context")
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.Unauthorized(w, "company_id not found in token")
+		return
+	}
 
 	results, err := h.masterService.ListPositions(r.Context(), companyID)
 	if err != nil {

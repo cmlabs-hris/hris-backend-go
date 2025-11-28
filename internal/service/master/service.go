@@ -2,11 +2,15 @@ package master
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
+	"github.com/go-chi/jwtauth/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type MasterService interface {
@@ -68,6 +72,14 @@ func (s *masterServiceImpl) CreateBranch(ctx context.Context, req branch.CreateB
 	// Save to database
 	created, err := s.branchRepo.Create(ctx, entity)
 	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return branch.BranchResponse{}, branch.ErrBranchNameExists
+			}
+		}
 		return branch.BranchResponse{}, fmt.Errorf("failed to create branch: %w", err)
 	}
 
@@ -77,12 +89,28 @@ func (s *masterServiceImpl) CreateBranch(ctx context.Context, req branch.CreateB
 		CompanyID: created.CompanyID,
 		Name:      created.Name,
 		Address:   created.Address,
+		Timezone:  created.Timezone,
 	}, nil
 }
 
 func (s *masterServiceImpl) GetBranch(ctx context.Context, id string) (branch.BranchResponse, error) {
-	entity, err := s.branchRepo.GetByID(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
+		return branch.BranchResponse{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return branch.BranchResponse{}, fmt.Errorf("company_id not found in token")
+	}
+
+	entity, err := s.branchRepo.GetByID(ctx, id, companyID)
+	if err != nil {
+		// Check if branch not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return branch.BranchResponse{}, branch.ErrBranchNotFound
+		}
 		return branch.BranchResponse{}, err
 	}
 
@@ -91,6 +119,7 @@ func (s *masterServiceImpl) GetBranch(ctx context.Context, id string) (branch.Br
 		CompanyID: entity.CompanyID,
 		Name:      entity.Name,
 		Address:   entity.Address,
+		Timezone:  entity.Timezone,
 	}, nil
 }
 
@@ -100,6 +129,11 @@ func (s *masterServiceImpl) ListBranches(ctx context.Context, companyID string) 
 		return nil, err
 	}
 
+	// If no branches found, return empty list instead of error
+	if len(branches) == 0 {
+		return []branch.BranchResponse{}, nil
+	}
+
 	var responses []branch.BranchResponse
 	for _, b := range branches {
 		responses = append(responses, branch.BranchResponse{
@@ -107,6 +141,7 @@ func (s *masterServiceImpl) ListBranches(ctx context.Context, companyID string) 
 			CompanyID: b.CompanyID,
 			Name:      b.Name,
 			Address:   b.Address,
+			Timezone:  b.Timezone,
 		})
 	}
 
@@ -114,17 +149,66 @@ func (s *masterServiceImpl) ListBranches(ctx context.Context, companyID string) 
 }
 
 func (s *masterServiceImpl) UpdateBranch(ctx context.Context, req branch.UpdateBranchRequest) error {
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	req.CompanyID = companyID
+
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return err
 	}
 
 	// Update in database
-	return s.branchRepo.Update(ctx, req)
+	err = s.branchRepo.Update(ctx, req)
+	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return branch.ErrBranchNameExists
+			}
+		}
+		// Check if branch not found (no rows affected)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return branch.ErrBranchNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (s *masterServiceImpl) DeleteBranch(ctx context.Context, id string) error {
-	return s.branchRepo.Delete(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	err = s.branchRepo.Delete(ctx, id, companyID)
+	if err != nil {
+		// Check if branch not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return branch.ErrBranchNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // ==================== GRADE OPERATIONS ====================
@@ -144,6 +228,14 @@ func (s *masterServiceImpl) CreateGrade(ctx context.Context, companyID string, r
 	// Save to database
 	created, err := s.gradeRepo.Create(ctx, entity)
 	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return grade.GradeResponse{}, grade.ErrGradeNameExists
+			}
+		}
 		return grade.GradeResponse{}, fmt.Errorf("failed to create grade: %w", err)
 	}
 
@@ -155,8 +247,23 @@ func (s *masterServiceImpl) CreateGrade(ctx context.Context, companyID string, r
 }
 
 func (s *masterServiceImpl) GetGrade(ctx context.Context, id string) (grade.GradeResponse, error) {
-	entity, err := s.gradeRepo.GetByID(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
+		return grade.GradeResponse{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return grade.GradeResponse{}, fmt.Errorf("company_id not found in token")
+	}
+
+	entity, err := s.gradeRepo.GetByID(ctx, id, companyID)
+	if err != nil {
+		// Check if grade not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return grade.GradeResponse{}, grade.ErrGradeNotFound
+		}
 		return grade.GradeResponse{}, err
 	}
 
@@ -172,6 +279,11 @@ func (s *masterServiceImpl) ListGrades(ctx context.Context, companyID string) ([
 		return nil, err
 	}
 
+	// If no grades found, return empty list instead of error
+	if len(grades) == 0 {
+		return []grade.GradeResponse{}, nil
+	}
+
 	var responses []grade.GradeResponse
 	for _, g := range grades {
 		responses = append(responses, grade.GradeResponse{
@@ -184,17 +296,66 @@ func (s *masterServiceImpl) ListGrades(ctx context.Context, companyID string) ([
 }
 
 func (s *masterServiceImpl) UpdateGrade(ctx context.Context, req grade.UpdateGradeRequest) error {
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	req.CompanyID = companyID
+
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return err
 	}
 
 	// Update in database
-	return s.gradeRepo.Update(ctx, req)
+	err = s.gradeRepo.Update(ctx, req)
+	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return grade.ErrGradeNameExists
+			}
+		}
+		// Check if grade not found (no rows affected)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return grade.ErrGradeNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (s *masterServiceImpl) DeleteGrade(ctx context.Context, id string) error {
-	return s.gradeRepo.Delete(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	err = s.gradeRepo.Delete(ctx, id, companyID)
+	if err != nil {
+		// Check if grade not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return grade.ErrGradeNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // ==================== POSITION OPERATIONS ====================
@@ -214,6 +375,14 @@ func (s *masterServiceImpl) CreatePosition(ctx context.Context, companyID string
 	// Save to database
 	created, err := s.positionRepo.Create(ctx, entity)
 	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return position.PositionResponse{}, position.ErrPositionNameExists
+			}
+		}
 		return position.PositionResponse{}, fmt.Errorf("failed to create position: %w", err)
 	}
 
@@ -226,8 +395,23 @@ func (s *masterServiceImpl) CreatePosition(ctx context.Context, companyID string
 }
 
 func (s *masterServiceImpl) GetPosition(ctx context.Context, id string) (position.PositionResponse, error) {
-	entity, err := s.positionRepo.GetByID(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
 	if err != nil {
+		return position.PositionResponse{}, fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return position.PositionResponse{}, fmt.Errorf("company_id not found in token")
+	}
+
+	entity, err := s.positionRepo.GetByID(ctx, id, companyID)
+	if err != nil {
+		// Check if position not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return position.PositionResponse{}, position.ErrPositionNotFound
+		}
 		return position.PositionResponse{}, err
 	}
 
@@ -244,6 +428,11 @@ func (s *masterServiceImpl) ListPositions(ctx context.Context, companyID string)
 		return nil, err
 	}
 
+	// If no positions found, return empty list instead of error
+	if len(positions) == 0 {
+		return []position.PositionResponse{}, nil
+	}
+
 	var responses []position.PositionResponse
 	for _, p := range positions {
 		responses = append(responses, position.PositionResponse{
@@ -257,15 +446,64 @@ func (s *masterServiceImpl) ListPositions(ctx context.Context, companyID string)
 }
 
 func (s *masterServiceImpl) UpdatePosition(ctx context.Context, req position.UpdatePositionRequest) error {
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	req.CompanyID = companyID
+
 	// Validate request
 	if err := req.Validate(); err != nil {
 		return err
 	}
 
 	// Update in database
-	return s.positionRepo.Update(ctx, req)
+	err = s.positionRepo.Update(ctx, req)
+	if err != nil {
+		// Check for duplicate name (unique constraint violation)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505": // unique_violation
+				return position.ErrPositionNameExists
+			}
+		}
+		// Check if position not found (no rows affected)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return position.ErrPositionNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (s *masterServiceImpl) DeletePosition(ctx context.Context, id string) error {
-	return s.positionRepo.Delete(ctx, id)
+	// Extract company_id from JWT
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id not found in token")
+	}
+
+	err = s.positionRepo.Delete(ctx, id, companyID)
+	if err != nil {
+		// Check if position not found
+		if errors.Is(err, pgx.ErrNoRows) {
+			return position.ErrPositionNotFound
+		}
+		return err
+	}
+	return nil
 }

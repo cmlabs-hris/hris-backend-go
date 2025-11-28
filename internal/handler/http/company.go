@@ -69,6 +69,11 @@ func (c *CompanyHandlerImpl) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	company, err := c.companyService.Create(r.Context(), req)
+	if err != nil {
+		slog.Error("Failed to create company", "error", err)
+		response.HandleError(w, err)
+		return
+	}
 
 	response.Created(w, "Company created successfully", company)
 }

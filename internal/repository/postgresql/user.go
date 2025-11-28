@@ -2,13 +2,87 @@ package postgresql
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type userRepositoryImpl struct {
 	db *database.DB
+}
+
+// Update implements user.UserRepository.
+func (r *userRepositoryImpl) Update(ctx context.Context, req user.UpdateUserRequest) error {
+	q := GetQuerier(ctx, r.db)
+
+	updates := make([]string, 0)
+	args := make([]interface{}, 0)
+	argIdx := 1
+
+	if req.Email != nil {
+		updates = append(updates, fmt.Sprintf("email = $%d", argIdx))
+		args = append(args, *req.Email)
+		argIdx++
+	}
+	if req.Password != nil {
+		updates = append(updates, fmt.Sprintf("password_hash = $%d", argIdx))
+		args = append(args, *req.Password)
+		argIdx++
+	}
+	if req.Role != nil {
+		updates = append(updates, fmt.Sprintf("role = $%d", argIdx))
+		args = append(args, *req.Role)
+		argIdx++
+	}
+	if req.CompanyID != nil {
+		updates = append(updates, fmt.Sprintf("company_id = $%d", argIdx))
+		args = append(args, *req.CompanyID)
+		argIdx++
+	}
+
+	// Always update the updated_at field
+	updates = append(updates, fmt.Sprintf("updated_at = $%d", argIdx))
+	args = append(args, time.Now())
+	argIdx++
+
+	args = append(args, req.ID)
+	idIdx := argIdx
+
+	query := "UPDATE users SET " + strings.Join(updates, ", ") +
+		fmt.Sprintf(" WHERE id = $%d RETURNING id", idIdx)
+
+	var updatedID string
+	if err := q.QueryRow(ctx, query, args...).Scan(&updatedID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		return fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateRole implements user.UserRepository.
+func (r *userRepositoryImpl) UpdateRole(ctx context.Context, req user.UpdateUserRoleRequest) error {
+	q := GetQuerier(ctx, r.db)
+
+	updateQuery := `
+		UPDATE users
+		SET role = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+
+	_, err := q.Exec(ctx, updateQuery, req.Role, req.ID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // LinkPasswordAccount implements user.UserRepository.
@@ -163,11 +237,12 @@ func (r *userRepositoryImpl) GetByID(ctx context.Context, id string) (user.User,
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
-			   email_verified, email_verification_token, email_verification_sent_at,
-			   created_at, updated_at
-		FROM users
-		WHERE id = $1
+		SELECT u.id, u.company_id, u.email, u.password_hash, u.role, u.oauth_provider, u.oauth_provider_id,
+			   u.email_verified, u.email_verification_token, u.email_verification_sent_at,
+			   u.created_at, u.updated_at, e.id AS employee_id
+		FROM users u
+		LEFT JOIN employees e ON u.id = e.user_id
+		WHERE u.id = $1
 	`
 
 	var found user.User
@@ -184,6 +259,7 @@ func (r *userRepositoryImpl) GetByID(ctx context.Context, id string) (user.User,
 		&found.EmailVerificationSentAt,
 		&found.CreatedAt,
 		&found.UpdatedAt,
+		&found.EmployeeID,
 	)
 	if err != nil {
 		return user.User{}, err
@@ -197,11 +273,12 @@ func (r *userRepositoryImpl) GetByEmail(ctx context.Context, email string) (user
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, email, password_hash, role, oauth_provider, oauth_provider_id,
-			   email_verified, email_verification_token, email_verification_sent_at,
-			   created_at, updated_at
-		FROM users
-		WHERE email = $1
+		SELECT u.id, u.company_id, u.email, u.password_hash, u.role, u.oauth_provider, u.oauth_provider_id,
+			   u.email_verified, u.email_verification_token, u.email_verification_sent_at,
+			   u.created_at, u.updated_at, e.id AS employee_id
+		FROM users u
+		LEFT JOIN employees e ON u.id = e.user_id
+		WHERE u.email = $1
 	`
 
 	var found user.User
@@ -218,6 +295,7 @@ func (r *userRepositoryImpl) GetByEmail(ctx context.Context, email string) (user
 		&found.EmailVerificationSentAt,
 		&found.CreatedAt,
 		&found.UpdatedAt,
+		&found.EmployeeID, // This will be nil if no employee record exists
 	)
 	if err != nil {
 		return user.User{}, err

@@ -133,17 +133,26 @@ func Itoa(i int) string {
 	return strconv.Itoa(i)
 }
 
-// IsValidDateTime checks if a string is a valid ISO8601 timestamp.
-// Accepts formats like: "2024-01-15T10:30:00Z" or "2024-01-15T10:30:00+07:00"
+// IsValidDateTime checks if a string is a valid date in "YYYY-MM-DD" format.
 func IsValidDateTime(dateTimeStr string) (time.Time, bool) {
-	// Try RFC3339 format (ISO8601 with timezone)
-	t, err := time.Parse(time.RFC3339, dateTimeStr)
+	t, err := time.Parse("2006-01-02", dateTimeStr)
+	if err == nil {
+		return t, true
+	}
+	return time.Time{}, false
+}
+
+// IsValidTime checks if a string is a valid time in HH:MM or HH:MM:SS format.
+// Accepts formats like: "09:00", "09:00:00", "23:59:59"
+func IsValidTime(timeStr string) (time.Time, bool) {
+	// Try HH:MM:SS format first
+	t, err := time.Parse("15:04:05", timeStr)
 	if err == nil {
 		return t, true
 	}
 
-	// Try RFC3339Nano format (with nanoseconds)
-	t, err = time.Parse(time.RFC3339Nano, dateTimeStr)
+	// Try HH:MM format (will default seconds to 00)
+	t, err = time.Parse("15:04", timeStr)
 	if err == nil {
 		return t, true
 	}

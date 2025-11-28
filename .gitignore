@@ -32,3 +32,6 @@ go.work.sum
 # .vscode/
 Technical_Docs_PBL_2025.md
 Technical_Docs_PBL_2025.txt
+
+# Storage - Ignore all contents...
+/storage/*
