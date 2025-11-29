@@ -138,12 +138,157 @@ func (a *attendanceRepository) GetByEmployeeAndDate(ctx context.Context, employe
 
 // GetByID implements attendance.AttendanceRepository.
 func (a *attendanceRepository) GetByID(ctx context.Context, id string, companyID string) (attendance.Attendance, error) {
-	panic("unimplemented")
+	q := GetQuerier(ctx, a.db)
+
+	query := `
+		SELECT 
+			a.id, a.employee_id, a.company_id, a.date, a.work_schedule_time_id, a.actual_location_type,
+			a.clock_in, a.clock_out, a.work_hours_in_minutes,
+			a.clock_in_latitude, a.clock_in_longitude, a.clock_in_proof_url,
+			a.clock_out_latitude, a.clock_out_longitude, a.clock_out_proof_url,
+			a.status, a.approved_by, a.approved_at, a.rejection_reason,
+			a.leave_type_id, a.late_minutes, a.early_leave_minutes, a.overtime_minutes,
+			a.created_at, a.updated_at,
+			e.full_name AS employee_name,
+			p.name AS employee_position
+		FROM attendances a
+		LEFT JOIN employees e ON e.id = a.employee_id
+		LEFT JOIN positions p ON p.id = e.position_id
+		WHERE a.id = $1 AND a.company_id = $2
+	`
+
+	var att attendance.Attendance
+	err := q.QueryRow(ctx, query, id, companyID).Scan(
+		&att.ID, &att.EmployeeID, &att.CompanyID, &att.Date, &att.WorkScheduleTimeID, &att.ActualLocationType,
+		&att.ClockIn, &att.ClockOut, &att.WorkHoursInMinutes,
+		&att.ClockInLatitude, &att.ClockInLongitude, &att.ClockInProofURL,
+		&att.ClockOutLatitude, &att.ClockOutLongitude, &att.ClockOutProofURL,
+		&att.Status, &att.ApprovedBy, &att.ApprovedAt, &att.RejectionReason,
+		&att.LeaveTypeID, &att.LateMinutes, &att.EarlyLeaveMinutes, &att.OvertimeMinutes,
+		&att.CreatedAt, &att.UpdatedAt,
+		&att.EmployeeName, &att.EmployeePosition,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return attendance.Attendance{}, attendance.ErrAttendanceNotFound
+		}
+		return attendance.Attendance{}, fmt.Errorf("failed to get attendance by ID: %w", err)
+	}
+
+	return att, nil
 }
 
 // GetMyAttendance implements attendance.AttendanceRepository.
 func (a *attendanceRepository) GetMyAttendance(ctx context.Context, employeeID string, filter attendance.MyAttendanceFilter, companyID string) ([]attendance.Attendance, int64, error) {
-	panic("unimplemented")
+	q := GetQuerier(ctx, a.db)
+
+	// Build WHERE clause
+	baseWhere := "a.employee_id = $1 AND a.company_id = $2"
+	args := []interface{}{employeeID, companyID}
+	argIdx := 3
+
+	// Date filter
+	if filter.Date != nil && *filter.Date != "" {
+		baseWhere += fmt.Sprintf(" AND a.date = $%d", argIdx)
+		args = append(args, *filter.Date)
+		argIdx++
+	}
+
+	// Date range filters
+	if filter.StartDate != nil && *filter.StartDate != "" {
+		baseWhere += fmt.Sprintf(" AND a.date >= $%d", argIdx)
+		args = append(args, *filter.StartDate)
+		argIdx++
+	}
+	if filter.EndDate != nil && *filter.EndDate != "" {
+		baseWhere += fmt.Sprintf(" AND a.date <= $%d", argIdx)
+		args = append(args, *filter.EndDate)
+		argIdx++
+	}
+
+	// Status filter
+	if filter.Status != nil && *filter.Status != "" {
+		baseWhere += fmt.Sprintf(" AND a.status = $%d", argIdx)
+		args = append(args, *filter.Status)
+		argIdx++
+	}
+
+	// Count total
+	countQuery := "SELECT COUNT(*) FROM attendances a WHERE " + baseWhere
+	var total int64
+	if err := q.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count attendances: %w", err)
+	}
+
+	// Build ORDER BY
+	orderByField := "a.date"
+	switch filter.SortBy {
+	case "clock_in_time":
+		orderByField = "a.clock_in"
+	case "clock_out_time":
+		orderByField = "a.clock_out"
+	case "status":
+		orderByField = "a.status"
+	}
+	sortOrder := "DESC"
+	if strings.ToLower(filter.SortOrder) == "asc" {
+		sortOrder = "ASC"
+	}
+
+	// Build query with pagination
+	selectQuery := fmt.Sprintf(`
+		SELECT 
+			a.id, a.employee_id, a.company_id, a.date, a.work_schedule_time_id, a.actual_location_type,
+			a.clock_in, a.clock_out, a.work_hours_in_minutes,
+			a.clock_in_latitude, a.clock_in_longitude, a.clock_in_proof_url,
+			a.clock_out_latitude, a.clock_out_longitude, a.clock_out_proof_url,
+			a.status, a.approved_by, a.approved_at, a.rejection_reason,
+			a.leave_type_id, a.late_minutes, a.early_leave_minutes, a.overtime_minutes,
+			a.created_at, a.updated_at,
+			e.full_name AS employee_name,
+			p.name AS employee_position
+		FROM attendances a
+		LEFT JOIN employees e ON e.id = a.employee_id
+		LEFT JOIN positions p ON p.id = e.position_id
+		WHERE %s
+		ORDER BY %s %s
+		LIMIT $%d OFFSET $%d
+	`, baseWhere, orderByField, sortOrder, argIdx, argIdx+1)
+
+	limit := filter.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	offset := (filter.Page - 1) * limit
+	args = append(args, limit, offset)
+
+	rows, err := q.Query(ctx, selectQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query attendances: %w", err)
+	}
+	defer rows.Close()
+
+	var attendances []attendance.Attendance
+	for rows.Next() {
+		var att attendance.Attendance
+		err := rows.Scan(
+			&att.ID, &att.EmployeeID, &att.CompanyID, &att.Date, &att.WorkScheduleTimeID, &att.ActualLocationType,
+			&att.ClockIn, &att.ClockOut, &att.WorkHoursInMinutes,
+			&att.ClockInLatitude, &att.ClockInLongitude, &att.ClockInProofURL,
+			&att.ClockOutLatitude, &att.ClockOutLongitude, &att.ClockOutProofURL,
+			&att.Status, &att.ApprovedBy, &att.ApprovedAt, &att.RejectionReason,
+			&att.LeaveTypeID, &att.LateMinutes, &att.EarlyLeaveMinutes, &att.OvertimeMinutes,
+			&att.CreatedAt, &att.UpdatedAt,
+			&att.EmployeeName, &att.EmployeePosition,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to scan attendance: %w", err)
+		}
+		attendances = append(attendances, att)
+	}
+
+	return attendances, total, nil
 }
 
 // HasCheckedInToday implements attendance.AttendanceRepository.
@@ -174,7 +319,134 @@ func (a *attendanceRepository) HasCheckedInToday(ctx context.Context, employeeID
 
 // List implements attendance.AttendanceRepository.
 func (a *attendanceRepository) List(ctx context.Context, filter attendance.AttendanceFilter, companyID string) ([]attendance.Attendance, int64, error) {
-	panic("unimplemented")
+	q := GetQuerier(ctx, a.db)
+
+	// Build WHERE clause
+	baseWhere := "a.company_id = $1"
+	args := []interface{}{companyID}
+	argIdx := 2
+
+	// Employee ID filter
+	if filter.EmployeeID != nil && *filter.EmployeeID != "" {
+		baseWhere += fmt.Sprintf(" AND a.employee_id = $%d", argIdx)
+		args = append(args, *filter.EmployeeID)
+		argIdx++
+	}
+
+	// Employee name filter (search)
+	if filter.EmployeeName != nil && *filter.EmployeeName != "" {
+		baseWhere += fmt.Sprintf(" AND e.full_name ILIKE $%d", argIdx)
+		args = append(args, "%"+*filter.EmployeeName+"%")
+		argIdx++
+	}
+
+	// Date filter
+	if filter.Date != nil && *filter.Date != "" {
+		baseWhere += fmt.Sprintf(" AND a.date = $%d", argIdx)
+		args = append(args, *filter.Date)
+		argIdx++
+	}
+
+	// Date range filters
+	if filter.StartDate != nil && *filter.StartDate != "" {
+		baseWhere += fmt.Sprintf(" AND a.date >= $%d", argIdx)
+		args = append(args, *filter.StartDate)
+		argIdx++
+	}
+	if filter.EndDate != nil && *filter.EndDate != "" {
+		baseWhere += fmt.Sprintf(" AND a.date <= $%d", argIdx)
+		args = append(args, *filter.EndDate)
+		argIdx++
+	}
+
+	// Status filter
+	if filter.Status != nil && *filter.Status != "" {
+		baseWhere += fmt.Sprintf(" AND a.status = $%d", argIdx)
+		args = append(args, *filter.Status)
+		argIdx++
+	}
+
+	// Count total (need to join employees for name filter)
+	countQuery := `
+		SELECT COUNT(*) 
+		FROM attendances a
+		LEFT JOIN employees e ON e.id = a.employee_id
+		WHERE ` + baseWhere
+	var total int64
+	if err := q.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("failed to count attendances: %w", err)
+	}
+
+	// Build ORDER BY
+	orderByField := "a.date"
+	switch filter.SortBy {
+	case "employee_name":
+		orderByField = "e.full_name"
+	case "clock_in_time":
+		orderByField = "a.clock_in"
+	case "clock_out_time":
+		orderByField = "a.clock_out"
+	case "status":
+		orderByField = "a.status"
+	}
+	sortOrder := "DESC"
+	if strings.ToLower(filter.SortOrder) == "asc" {
+		sortOrder = "ASC"
+	}
+
+	// Build query with pagination
+	selectQuery := fmt.Sprintf(`
+		SELECT 
+			a.id, a.employee_id, a.company_id, a.date, a.work_schedule_time_id, a.actual_location_type,
+			a.clock_in, a.clock_out, a.work_hours_in_minutes,
+			a.clock_in_latitude, a.clock_in_longitude, a.clock_in_proof_url,
+			a.clock_out_latitude, a.clock_out_longitude, a.clock_out_proof_url,
+			a.status, a.approved_by, a.approved_at, a.rejection_reason,
+			a.leave_type_id, a.late_minutes, a.early_leave_minutes, a.overtime_minutes,
+			a.created_at, a.updated_at,
+			e.full_name AS employee_name,
+			p.name AS employee_position
+		FROM attendances a
+		LEFT JOIN employees e ON e.id = a.employee_id
+		LEFT JOIN positions p ON p.id = e.position_id
+		WHERE %s
+		ORDER BY %s %s
+		LIMIT $%d OFFSET $%d
+	`, baseWhere, orderByField, sortOrder, argIdx, argIdx+1)
+
+	limit := filter.Limit
+	if limit == 0 {
+		limit = 20
+	}
+	offset := (filter.Page - 1) * limit
+	args = append(args, limit, offset)
+
+	rows, err := q.Query(ctx, selectQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query attendances: %w", err)
+	}
+	defer rows.Close()
+
+	var attendances []attendance.Attendance
+	for rows.Next() {
+		var att attendance.Attendance
+		err := rows.Scan(
+			&att.ID, &att.EmployeeID, &att.CompanyID, &att.Date, &att.WorkScheduleTimeID, &att.ActualLocationType,
+			&att.ClockIn, &att.ClockOut, &att.WorkHoursInMinutes,
+			&att.ClockInLatitude, &att.ClockInLongitude, &att.ClockInProofURL,
+			&att.ClockOutLatitude, &att.ClockOutLongitude, &att.ClockOutProofURL,
+			&att.Status, &att.ApprovedBy, &att.ApprovedAt, &att.RejectionReason,
+			&att.LeaveTypeID, &att.LateMinutes, &att.EarlyLeaveMinutes, &att.OvertimeMinutes,
+			&att.CreatedAt, &att.UpdatedAt,
+			&att.EmployeeName, &att.EmployeePosition,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to scan attendance: %w", err)
+		}
+		attendances = append(attendances, att)
+	}
+
+	return attendances, total, nil
 }
 
 // Update implements attendance.AttendanceRepository.
@@ -289,6 +561,24 @@ func (a *attendanceRepository) Update(ctx context.Context, att attendance.Attend
 			return fmt.Errorf("attendance not found: %w", err)
 		}
 		return fmt.Errorf("failed to update attendance: %w", err)
+	}
+
+	return nil
+}
+
+// Delete implements attendance.AttendanceRepository.
+func (a *attendanceRepository) Delete(ctx context.Context, id string, companyID string) error {
+	q := GetQuerier(ctx, a.db)
+
+	query := `DELETE FROM attendances WHERE id = $1 AND company_id = $2`
+
+	commandTag, err := q.Exec(ctx, query, id, companyID)
+	if err != nil {
+		return fmt.Errorf("failed to delete attendance: %w", err)
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		return attendance.ErrAttendanceNotFound
 	}
 
 	return nil

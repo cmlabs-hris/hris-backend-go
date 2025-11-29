@@ -11,10 +11,12 @@ var (
 	// Work Schedule Time Errors
 	ErrWorkScheduleTimeNotFound = errors.New("work schedule time not found")
 	ErrWorkScheduleTimeExists   = errors.New("work schedule time already exists")
+	ErrInvalidLocationType      = errors.New("invalid location type for work schedule")
+	ErrMismatchedLocationType   = errors.New("mismatched location type for work schedule")
 
 	// Work Schedule Location Errors
 	ErrWorkScheduleLocationNotFound = errors.New("work schedule location not found")
-	ErrInvalidWorkScheduleType      = errors.New("work schedule type must be 'WFO'")
+	ErrInvalidWorkScheduleType      = errors.New("work schedule type must be 'WFO' or match the required location type")
 
 	// Employee Schedule Assignment Errors
 	ErrEmployeeScheduleAssignmentNotFound = errors.New("employee schedule assignment not found")

@@ -8,6 +8,7 @@ import (
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/attendance"
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
+	"github.com/go-chi/chi/v5"
 )
 
 type AttendanceHandler interface {
@@ -15,6 +16,11 @@ type AttendanceHandler interface {
 	ClockOut(w http.ResponseWriter, r *http.Request)
 	List(w http.ResponseWriter, r *http.Request)
 	GetMyAttendance(w http.ResponseWriter, r *http.Request)
+	Update(w http.ResponseWriter, r *http.Request)
+	Get(w http.ResponseWriter, r *http.Request)
+	Approve(w http.ResponseWriter, r *http.Request)
+	Reject(w http.ResponseWriter, r *http.Request)
+	Delete(w http.ResponseWriter, r *http.Request)
 }
 
 type attendanceHandlerImpl struct {
@@ -287,4 +293,90 @@ func (h *attendanceHandlerImpl) GetMyAttendance(w http.ResponseWriter, r *http.R
 	}
 
 	response.Success(w, results)
+}
+
+// Update implements AttendanceHandler.
+func (h *attendanceHandlerImpl) Update(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req attendance.UpdateAttendanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.HandleError(w, err)
+		return
+	}
+	req.ID = id
+
+	result, err := h.attendanceService.UpdateAttendance(r.Context(), req)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.SuccessWithMessage(w, "Attendance updated successfully", result)
+}
+
+// Get implements AttendanceHandler.
+func (h *attendanceHandlerImpl) Get(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	result, err := h.attendanceService.GetAttendance(r.Context(), id)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.Success(w, result)
+}
+
+// Approve implements AttendanceHandler.
+func (h *attendanceHandlerImpl) Approve(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req attendance.ApproveAttendanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.HandleError(w, err)
+		return
+	}
+	req.ID = id
+
+	result, err := h.attendanceService.ApproveAttendance(r.Context(), req)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.SuccessWithMessage(w, "Attendance approved successfully", result)
+}
+
+// Reject implements AttendanceHandler.
+func (h *attendanceHandlerImpl) Reject(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req attendance.RejectAttendanceRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.HandleError(w, err)
+		return
+	}
+	req.ID = id
+
+	result, err := h.attendanceService.RejectAttendance(r.Context(), req)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.SuccessWithMessage(w, "Attendance rejected successfully", result)
+}
+
+// Delete implements AttendanceHandler.
+func (h *attendanceHandlerImpl) Delete(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	err := h.attendanceService.DeleteAttendance(r.Context(), id)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.SuccessWithMessage(w, "Attendance deleted successfully", nil)
 }

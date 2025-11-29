@@ -32,5 +32,6 @@ type Attendance struct {
 	UpdatedAt          time.Time
 
 	// DTO
-	EmployeeName *string
+	EmployeeName     *string
+	EmployeePosition *string
 }

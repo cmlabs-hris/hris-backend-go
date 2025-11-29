@@ -219,26 +219,37 @@ func (c *CompanyServiceImpl) seedDefaultData(ctx context.Context, companyID stri
 	}
 	slog.Info("Seeded default leave types", "company_id", companyID, "count", len(leaveTypes))
 
-	// 5. Seed default work schedule
-	defaultSchedule := fixtures.GetDefaultWorkSchedule(companyID)
-	createdSchedule, err := c.workScheduleRepo.Create(ctx, defaultSchedule)
-	if err != nil {
-		slog.Warn("Failed to create default work schedule", "schedule", defaultSchedule.Name, "error", err)
-	} else {
-		seededIDs.WorkScheduleID = createdSchedule.ID
-		slog.Info("Seeded default work schedule", "company_id", companyID, "schedule", defaultSchedule.Name)
+	// 5. Seed all default work schedules (Standard, Night Shift, Afternoon Shift, Flexible)
+	allSchedules := fixtures.GetAllDefaultWorkSchedules(companyID)
+	for _, scheduleDef := range allSchedules {
+		createdSchedule, err := c.workScheduleRepo.Create(ctx, scheduleDef.Schedule)
+		if err != nil {
+			slog.Warn("Failed to create work schedule", "schedule", scheduleDef.Schedule.Name, "error", err)
+			continue
+		}
 
-		// 6. Seed work schedule times (Mon-Fri 09:00-18:00)
-		scheduleTimes := fixtures.GetDefaultWorkScheduleTimes(createdSchedule.ID)
+		// Store schedule ID
+		seededIDs.WorkScheduleIDs[createdSchedule.Name] = createdSchedule.ID
+
+		// Set the default schedule ID (Standard Office Hours) for owner employee
+		if scheduleDef.Schedule.Name == "Standard Office Hours" {
+			seededIDs.WorkScheduleID = createdSchedule.ID
+		}
+
+		slog.Info("Seeded work schedule", "company_id", companyID, "schedule", createdSchedule.Name)
+
+		// 6. Seed work schedule times for this schedule
+		scheduleTimes := scheduleDef.TimesGetter(createdSchedule.ID)
+		seededIDs.WorkScheduleTimeIDs[createdSchedule.Name] = make(map[int]string)
 		for _, st := range scheduleTimes {
 			createdST, err := c.workScheduleTimeRepo.Create(ctx, st, companyID)
 			if err != nil {
-				slog.Warn("Failed to create default schedule time", "day", st.DayOfWeek, "error", err)
+				slog.Warn("Failed to create schedule time", "schedule", createdSchedule.Name, "day", st.DayOfWeek, "error", err)
 			} else {
-				seededIDs.WorkScheduleTimeIDs[st.DayOfWeek] = createdST.ID
+				seededIDs.WorkScheduleTimeIDs[createdSchedule.Name][st.DayOfWeek] = createdST.ID
 			}
 		}
-		slog.Info("Seeded default work schedule times", "company_id", companyID, "count", len(scheduleTimes))
+		slog.Info("Seeded work schedule times", "company_id", companyID, "schedule", createdSchedule.Name, "count", len(scheduleTimes))
 	}
 
 	return seededIDs, nil

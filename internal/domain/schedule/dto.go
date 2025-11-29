@@ -10,7 +10,7 @@ import (
 type CreateWorkScheduleRequest struct {
 	Name               string `json:"name"`
 	Type               string `json:"type"`
-	GracePeriodMinutes int    `json:"grace_period_minutes"`
+	GracePeriodMinutes *int   `json:"grace_period_minutes"`
 }
 
 func (r *CreateWorkScheduleRequest) Validate() error {
@@ -34,7 +34,13 @@ func (r *CreateWorkScheduleRequest) Validate() error {
 			Message: "type must be one of: " + strings.Join(WorkArrangementValues, ", "),
 		})
 	}
-	if r.GracePeriodMinutes < 0 {
+	if r.GracePeriodMinutes == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "grace_period_minutes",
+			Message: "grace_period_minutes is required",
+		})
+	}
+	if r.GracePeriodMinutes != nil && *r.GracePeriodMinutes < 0 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "grace_period_minutes",
 			Message: "grace_period_minutes must be a non-negative number",
@@ -151,12 +157,12 @@ func (f *WorkScheduleFilter) Validate() error {
 
 type CreateWorkScheduleTimeRequest struct {
 	WorkScheduleID    string  `json:"work_schedule_id"`
-	DayOfWeek         int     `json:"day_of_week"`
-	ClockInTime       string  `json:"clock_in_time"`              // ISO 8601 format
-	BreakStartTime    *string `json:"break_start_time,omitempty"` // ISO 8601 format, optional
-	BreakEndTime      *string `json:"break_end_time,omitempty"`   // ISO 8601 format, optional
-	ClockOutTime      string  `json:"clock_out_time"`             // ISO 8601 format
-	IsNextDayCheckout bool    `json:"is_next_day_checkout"`       // New field
+	DayOfWeek         *int    `json:"day_of_week"`
+	ClockInTime       string  `json:"clock_in_time"`              // HH:MM format
+	BreakStartTime    *string `json:"break_start_time,omitempty"` // HH:MM format, optional
+	BreakEndTime      *string `json:"break_end_time,omitempty"`   // HH:MM format, optional
+	ClockOutTime      string  `json:"clock_out_time"`             // HH:MM format
+	IsNextDayCheckout *bool   `json:"is_next_day_checkout"`
 	LocationType      string  `json:"location_type"`
 }
 
@@ -169,39 +175,60 @@ func (r *CreateWorkScheduleTimeRequest) Validate() error {
 			Message: "work_schedule_id is required",
 		})
 	}
-	if r.DayOfWeek < 1 || r.DayOfWeek > 7 {
+	if r.DayOfWeek == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "day_of_week",
+			Message: "day_of_week is required",
+		})
+	}
+	if r.DayOfWeek != nil && (*r.DayOfWeek < 1 || *r.DayOfWeek > 7) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "day_of_week",
 			Message: "day_of_week must be between 1 (Monday) and 7 (Sunday)",
 		})
 	}
 
-	// Validate ClockInTime format
-	_, err := validator.IsValidTime(r.ClockInTime)
-	if !err {
+	// Validate ClockInTime - required
+	if validator.IsEmpty(r.ClockInTime) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_time",
+			Message: "clock_in_time is required",
+		})
+	} else if _, valid := validator.IsValidTime(r.ClockInTime); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "clock_in_time",
 			Message: "clock_in_time must be a valid time in HH:MM format",
 		})
 	}
 
-	// Validate ClockOutTime format
-	_, err = validator.IsValidTime(r.ClockOutTime)
-	if !err {
+	// Validate ClockOutTime - required
+	if validator.IsEmpty(r.ClockOutTime) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_out_time",
+			Message: "clock_out_time is required",
+		})
+	} else if _, valid := validator.IsValidTime(r.ClockOutTime); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "clock_out_time",
 			Message: "clock_out_time must be a valid time in HH:MM format",
 		})
 	}
 
+	if r.IsNextDayCheckout == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "is_next_day_checkout",
+			Message: "is_next_day_checkout is required",
+		})
+	}
+
 	// Validate ClockInTime and ClockOutTime based on is_next_day_checkout
-	if !r.IsNextDayCheckout && r.ClockInTime > r.ClockOutTime {
+	if r.IsNextDayCheckout != nil && !*r.IsNextDayCheckout && r.ClockInTime > r.ClockOutTime {
 		errs = append(errs, validator.ValidationError{
 			Field:   "clock_in_time",
 			Message: "clock_out_time must not be before clock_in_time when is_next_day_checkout is false",
 		})
 	}
-	if r.IsNextDayCheckout && r.ClockInTime < r.ClockOutTime {
+	if r.IsNextDayCheckout != nil && *r.IsNextDayCheckout && r.ClockInTime < r.ClockOutTime {
 		errs = append(errs, validator.ValidationError{
 			Field:   "clock_in_time",
 			Message: "clock_out_time must be before clock_in_time when is_next_day_checkout is true",
@@ -233,7 +260,7 @@ func (r *CreateWorkScheduleTimeRequest) Validate() error {
 
 		if validStart && validEnd {
 			// Validate break times based on shift type
-			if r.IsNextDayCheckout {
+			if r.IsNextDayCheckout != nil && *r.IsNextDayCheckout {
 				// ===== OVERNIGHT SHIFT VALIDATION =====
 				// Example: Clock In 23:00 (Day 1) → Clock Out 07:00 (Day 2)
 				// Valid break scenarios:
@@ -322,13 +349,13 @@ func (r *CreateWorkScheduleTimeRequest) Validate() error {
 		}
 	}
 
+	// Validate LocationType - required
 	if validator.IsEmpty(r.LocationType) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "location_type",
 			Message: "location_type is required",
 		})
-	}
-	if !validator.IsInSlice(r.LocationType, WorkArrangementValues) {
+	} else if !validator.IsInSlice(r.LocationType, WorkArrangementValues) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "location_type",
 			Message: "location_type must be one of: " + strings.Join(WorkArrangementValues, ", "),
@@ -530,12 +557,12 @@ type UpdateWorkScheduleTimeRequest struct {
 	ID                string  `json:"id"`
 	CompanyID         string  `json:"-"`
 	DayOfWeek         *int    `json:"day_of_week,omitempty"`
-	ClockInTime       *string `json:"clock_in_time,omitempty"`        // HH:MM format
-	ClockOutTime      *string `json:"clock_out_time,omitempty"`       // HH:MM format
-	IsNextDayCheckout *bool   `json:"is_next_day_checkout,omitempty"` // Required when ClockInTime/ClockOutTime are provided
-	BreakStartTime    *string `json:"break_start_time,omitempty"`     // HH:MM format, optional
-	BreakEndTime      *string `json:"break_end_time,omitempty"`       // HH:MM format, optional
-	LocationType      *string `json:"location_type,omitempty"`
+	ClockInTime       string  `json:"clock_in_time"`              // HH:MM format, required
+	ClockOutTime      string  `json:"clock_out_time"`             // HH:MM format, required
+	IsNextDayCheckout *bool   `json:"is_next_day_checkout"`       // Required
+	BreakStartTime    *string `json:"break_start_time,omitempty"` // HH:MM format, optional
+	BreakEndTime      *string `json:"break_end_time,omitempty"`   // HH:MM format, optional
+	LocationType      string  `json:"location_type"`              // Required
 }
 
 func (r *UpdateWorkScheduleTimeRequest) Validate() error {
@@ -554,243 +581,151 @@ func (r *UpdateWorkScheduleTimeRequest) Validate() error {
 		})
 	}
 
-	// When updating any time-related fields, all core time fields must be provided together
-	// to maintain business logic consistency and avoid partial updates that could violate constraints
-	timeFieldsProvided := []bool{
-		r.ClockInTime != nil,
-		r.ClockOutTime != nil,
-		r.IsNextDayCheckout != nil,
+	// Validate ClockInTime - required
+	if validator.IsEmpty(r.ClockInTime) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_time",
+			Message: "clock_in_time is required",
+		})
+	} else if _, valid := validator.IsValidTime(r.ClockInTime); !valid {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_time",
+			Message: "clock_in_time must be a valid time in HH:MM format",
+		})
 	}
 
-	breakFieldsProvided := []bool{
-		r.BreakStartTime != nil,
-		r.BreakEndTime != nil,
+	// Validate ClockOutTime - required
+	if validator.IsEmpty(r.ClockOutTime) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_out_time",
+			Message: "clock_out_time is required",
+		})
+	} else if _, valid := validator.IsValidTime(r.ClockOutTime); !valid {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_out_time",
+			Message: "clock_out_time must be a valid time in HH:MM format",
+		})
 	}
 
-	// Check if any time field is provided
-	anyTimeFieldProvided := false
-	for _, provided := range timeFieldsProvided {
-		if provided {
-			anyTimeFieldProvided = true
-			break
-		}
+	if r.IsNextDayCheckout == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "is_next_day_checkout",
+			Message: "is_next_day_checkout is required",
+		})
 	}
 
-	// Check if any break field is provided
-	anyBreakFieldProvided := false
-	for _, provided := range breakFieldsProvided {
-		if provided {
-			anyBreakFieldProvided = true
-			break
-		}
+	// Validate ClockInTime and ClockOutTime based on is_next_day_checkout
+	if r.IsNextDayCheckout != nil && !*r.IsNextDayCheckout && r.ClockInTime > r.ClockOutTime {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_time",
+			Message: "clock_out_time must not be before clock_in_time when is_next_day_checkout is false",
+		})
+	}
+	if r.IsNextDayCheckout != nil && *r.IsNextDayCheckout && r.ClockInTime < r.ClockOutTime {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_time",
+			Message: "clock_out_time must be before clock_in_time when is_next_day_checkout is true",
+		})
 	}
 
-	// If any time field is provided, all time fields must be provided
-	if anyTimeFieldProvided {
-		allTimeFieldsProvided := true
-		for _, provided := range timeFieldsProvided {
-			if !provided {
-				allTimeFieldsProvided = false
-				break
-			}
-		}
+	// Validate break times (both must be provided or neither)
+	if (r.BreakStartTime != nil && r.BreakEndTime == nil) || (r.BreakStartTime == nil && r.BreakEndTime != nil) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "break_times",
+			Message: "both break_start_time and break_end_time must be provided or neither",
+		})
+	} else if r.BreakStartTime != nil && r.BreakEndTime != nil {
+		_, validStart := validator.IsValidTime(*r.BreakStartTime)
+		_, validEnd := validator.IsValidTime(*r.BreakEndTime)
 
-		if !allTimeFieldsProvided {
-			errs = append(errs, validator.ValidationError{
-				Field:   "time_fields",
-				Message: "when updating time fields, clock_in_time, clock_out_time, and is_next_day_checkout must all be provided together",
-			})
-		}
-
-		// If any time field is provided, break fields must also be provided (can be null pair)
-		if !anyBreakFieldProvided {
-			errs = append(errs, validator.ValidationError{
-				Field:   "break_fields",
-				Message: "when updating time fields, break_start_time and break_end_time must also be provided (both can be null to remove breaks)",
-			})
-		}
-	}
-
-	// If any break field is provided, all time fields must be provided
-	if anyBreakFieldProvided {
-		if !anyTimeFieldProvided {
-			errs = append(errs, validator.ValidationError{
-				Field:   "time_fields",
-				Message: "when updating break times, clock_in_time, clock_out_time, and is_next_day_checkout must also be provided",
-			})
-		}
-
-		// Both break fields must be provided together (both present or both null)
-		if r.BreakStartTime != nil && r.BreakEndTime == nil {
-			errs = append(errs, validator.ValidationError{
-				Field:   "break_end_time",
-				Message: "break_end_time is required when break_start_time is provided",
-			})
-		}
-		if r.BreakStartTime == nil && r.BreakEndTime != nil {
+		if !validStart {
 			errs = append(errs, validator.ValidationError{
 				Field:   "break_start_time",
-				Message: "break_start_time is required when break_end_time is provided",
+				Message: "break_start_time must be a valid time in HH:MM format",
 			})
 		}
-	}
-
-	// Validate time fields if all are provided
-	if r.ClockInTime != nil && r.ClockOutTime != nil && r.IsNextDayCheckout != nil {
-		_, validClockIn := validator.IsValidTime(*r.ClockInTime)
-		_, validClockOut := validator.IsValidTime(*r.ClockOutTime)
-
-		if !validClockIn {
+		if !validEnd {
 			errs = append(errs, validator.ValidationError{
-				Field:   "clock_in_time",
-				Message: "clock_in_time must be a valid time in HH:MM format",
-			})
-		}
-		if !validClockOut {
-			errs = append(errs, validator.ValidationError{
-				Field:   "clock_out_time",
-				Message: "clock_out_time must be a valid time in HH:MM format",
+				Field:   "break_end_time",
+				Message: "break_end_time must be a valid time in HH:MM format",
 			})
 		}
 
-		// Validate based on is_next_day_checkout
-		if validClockIn && validClockOut {
-			if !*r.IsNextDayCheckout && *r.ClockInTime > *r.ClockOutTime {
-				errs = append(errs, validator.ValidationError{
-					Field:   "clock_in_time",
-					Message: "clock_out_time must not be before clock_in_time when is_next_day_checkout is false",
-				})
-			}
-			if *r.IsNextDayCheckout && *r.ClockInTime < *r.ClockOutTime {
-				errs = append(errs, validator.ValidationError{
-					Field:   "clock_in_time",
-					Message: "clock_out_time must be before clock_in_time when is_next_day_checkout is true",
-				})
-			}
-		}
+		if validStart && validEnd {
+			// Validate break times based on shift type
+			if r.IsNextDayCheckout != nil && *r.IsNextDayCheckout {
+				// ===== OVERNIGHT SHIFT VALIDATION =====
+				breakStartAfterClockIn := *r.BreakStartTime >= r.ClockInTime
+				breakEndBeforeClockOut := *r.BreakEndTime <= r.ClockOutTime
 
-		// Validate break times if provided
-		if r.BreakStartTime != nil && r.BreakEndTime != nil {
-			_, validStart := validator.IsValidTime(*r.BreakStartTime)
-			_, validEnd := validator.IsValidTime(*r.BreakEndTime)
+				validBreakWindow := breakStartAfterClockIn || breakEndBeforeClockOut
 
-			if !validStart {
-				errs = append(errs, validator.ValidationError{
-					Field:   "break_start_time",
-					Message: "break_start_time must be a valid time in HH:MM format",
-				})
-			}
-			if !validEnd {
-				errs = append(errs, validator.ValidationError{
-					Field:   "break_end_time",
-					Message: "break_end_time must be a valid time in HH:MM format",
-				})
-			}
+				if !validBreakWindow {
+					errs = append(errs, validator.ValidationError{
+						Field:   "break_times",
+						Message: "break must be within shift window (after clock_in or before clock_out)",
+					})
+				}
 
-			if validStart && validEnd && validClockIn && validClockOut {
-				// Validate break times based on shift type
-				if *r.IsNextDayCheckout {
-					// ===== OVERNIGHT SHIFT VALIDATION =====
-					// Example: Clock In 23:00 (Day 1) → Clock Out 07:00 (Day 2)
-					// Valid break scenarios:
-					// 1. Break before midnight: 23:30 - 23:59
-					// 2. Break after midnight: 01:00 - 02:00
-					// 3. Break spanning midnight: 23:30 - 00:30
-
-					breakStartAfterClockIn := *r.BreakStartTime >= *r.ClockInTime
-					breakEndBeforeClockOut := *r.BreakEndTime <= *r.ClockOutTime
-
-					// Check if break is within the shift window
-					// At least one of these must be true:
-					// - Break starts after clock_in (same day portion)
-					// - Break ends before clock_out (next day portion)
-					validBreakWindow := breakStartAfterClockIn || breakEndBeforeClockOut
-
-					if !validBreakWindow {
-						errs = append(errs, validator.ValidationError{
-							Field:   "break_times",
-							Message: "break must be within shift window (after clock_in or before clock_out)",
-						})
-					}
-
-					// Validate break sequence based on whether it spans midnight
-					if *r.BreakStartTime < *r.BreakEndTime {
-						// Case 1: Break doesn't span midnight
-						// Examples: 23:30-23:59 OR 01:00-02:00
-						// Both times are on same side of midnight - this is normal
-
-						// If break is entirely before midnight (same day as clock_in)
-						// it must start after clock_in
-						if breakStartAfterClockIn && *r.BreakEndTime > "23:59" {
-							errs = append(errs, validator.ValidationError{
-								Field:   "break_end_time",
-								Message: "break_end_time cannot extend past midnight if break_start_time is before midnight",
-							})
-						}
-					} else {
-						// Case 2: Break spans midnight (break_start > break_end)
-						// Example: 23:30 - 00:30
-						// This means break starts on Day 1 and ends on Day 2
-
-						// For midnight-spanning breaks:
-						// - break_start must be after clock_in (on Day 1)
-						// - break_end must be before clock_out (on Day 2)
-						if !breakStartAfterClockIn {
-							errs = append(errs, validator.ValidationError{
-								Field:   "break_start_time",
-								Message: "for breaks spanning midnight, break_start_time must be after clock_in_time",
-							})
-						}
-						if !breakEndBeforeClockOut {
-							errs = append(errs, validator.ValidationError{
-								Field:   "break_end_time",
-								Message: "for breaks spanning midnight, break_end_time must be before clock_out_time",
-							})
-						}
-					}
-
-				} else {
-					// ===== SAME-DAY SHIFT VALIDATION =====
-					// Example: Clock In 09:00 → Clock Out 17:00
-					// Standard sequential validation: clock_in < break_start < break_end < clock_out
-
-					if *r.BreakStartTime < *r.ClockInTime {
-						errs = append(errs, validator.ValidationError{
-							Field:   "break_start_time",
-							Message: "break_start_time must be after clock_in_time",
-						})
-					}
-
-					if *r.BreakStartTime >= *r.BreakEndTime {
-						errs = append(errs, validator.ValidationError{
-							Field:   "break_start_time",
-							Message: "break_start_time must be before break_end_time",
-						})
-					}
-
-					if *r.BreakEndTime > *r.ClockOutTime {
+				if *r.BreakStartTime < *r.BreakEndTime {
+					if breakStartAfterClockIn && *r.BreakEndTime > "23:59" {
 						errs = append(errs, validator.ValidationError{
 							Field:   "break_end_time",
-							Message: "break_end_time must be before clock_out_time",
+							Message: "break_end_time cannot extend past midnight if break_start_time is before midnight",
 						})
 					}
+				} else {
+					if !breakStartAfterClockIn {
+						errs = append(errs, validator.ValidationError{
+							Field:   "break_start_time",
+							Message: "for breaks spanning midnight, break_start_time must be after clock_in_time",
+						})
+					}
+					if !breakEndBeforeClockOut {
+						errs = append(errs, validator.ValidationError{
+							Field:   "break_end_time",
+							Message: "for breaks spanning midnight, break_end_time must be before clock_out_time",
+						})
+					}
+				}
+
+			} else {
+				// ===== SAME-DAY SHIFT VALIDATION =====
+				if *r.BreakStartTime < r.ClockInTime {
+					errs = append(errs, validator.ValidationError{
+						Field:   "break_start_time",
+						Message: "break_start_time must be after clock_in_time",
+					})
+				}
+
+				if *r.BreakStartTime >= *r.BreakEndTime {
+					errs = append(errs, validator.ValidationError{
+						Field:   "break_start_time",
+						Message: "break_start_time must be before break_end_time",
+					})
+				}
+
+				if *r.BreakEndTime > r.ClockOutTime {
+					errs = append(errs, validator.ValidationError{
+						Field:   "break_end_time",
+						Message: "break_end_time must be before clock_out_time",
+					})
 				}
 			}
 		}
 	}
 
-	if r.LocationType != nil {
-		if validator.IsEmpty(*r.LocationType) {
-			errs = append(errs, validator.ValidationError{
-				Field:   "location_type",
-				Message: "location_type must not be empty",
-			})
-		} else if !validator.IsInSlice(*r.LocationType, WorkArrangementValues) {
-			errs = append(errs, validator.ValidationError{
-				Field:   "location_type",
-				Message: "location_type must be one of: " + strings.Join(WorkArrangementValues, ", "),
-			})
-		}
+	// Validate LocationType - required
+	if validator.IsEmpty(r.LocationType) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "location_type",
+			Message: "location_type is required",
+		})
+	} else if !validator.IsInSlice(r.LocationType, WorkArrangementValues) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "location_type",
+			Message: "location_type must be one of: " + strings.Join(WorkArrangementValues, ", "),
+		})
 	}
 
 	if len(errs) > 0 {

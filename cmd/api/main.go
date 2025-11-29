@@ -92,6 +92,7 @@ func main() {
 	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, attendanceRepo, quotaService, requestService, fileService)
 	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
 	scheduleService := scheduleService.NewScheduleService(
+		db,
 		workScheduleRepo,
 		workScheduleTimeRepo,
 		workScheduleLocationRepo,

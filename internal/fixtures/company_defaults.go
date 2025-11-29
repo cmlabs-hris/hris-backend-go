@@ -37,11 +37,14 @@ type SeededDataIDs struct {
 	// Leave Type IDs by code
 	LeaveTypeIDs map[string]string // e.g., "ANNUAL" -> "uuid"
 
-	// Work Schedule ID
+	// Work Schedule ID (default schedule for owner - Standard Office Hours)
 	WorkScheduleID string
 
-	// Work Schedule Time IDs by day of week
-	WorkScheduleTimeIDs map[int]string // e.g., 1 (Monday) -> "uuid"
+	// Work Schedule IDs by name (for multiple schedules)
+	WorkScheduleIDs map[string]string // e.g., "Standard Office Hours" -> "uuid"
+
+	// Work Schedule Time IDs by schedule name and day of week
+	WorkScheduleTimeIDs map[string]map[int]string // e.g., "Standard Office Hours" -> {1: "uuid", ...}
 }
 
 // NewSeededDataIDs creates a new SeededDataIDs with initialized maps
@@ -50,7 +53,8 @@ func NewSeededDataIDs() *SeededDataIDs {
 		PositionIDs:         make(map[string]string),
 		GradeIDs:            make(map[string]string),
 		LeaveTypeIDs:        make(map[string]string),
-		WorkScheduleTimeIDs: make(map[int]string),
+		WorkScheduleIDs:     make(map[string]string),
+		WorkScheduleTimeIDs: make(map[string]map[int]string),
 	}
 }
 
@@ -430,4 +434,159 @@ func GetDefaultWorkScheduleTimes(workScheduleID string) []schedule.WorkScheduleT
 	}
 
 	return times
+}
+
+// ==========================================
+// NIGHT/OVERNIGHT SHIFT SCHEDULE
+// ==========================================
+
+// GetNightShiftWorkSchedule returns an overnight/night shift schedule (22:00-06:00)
+func GetNightShiftWorkSchedule(companyID string) schedule.WorkSchedule {
+	return schedule.WorkSchedule{
+		CompanyID:          companyID,
+		Name:               "Night Shift",
+		Type:               schedule.WorkArrangementWFO,
+		GracePeriodMinutes: 15, // 15 minutes grace period
+	}
+}
+
+// GetNightShiftWorkScheduleTimes returns night shift hours (Mon-Fri 22:00-06:00 next day)
+func GetNightShiftWorkScheduleTimes(workScheduleID string) []schedule.WorkScheduleTime {
+	// Parse time for clock in/out
+	clockIn := time.Date(0, 1, 1, 22, 0, 0, 0, time.UTC)   // 22:00
+	breakStart := time.Date(0, 1, 1, 1, 0, 0, 0, time.UTC) // 01:00 (next day)
+	breakEnd := time.Date(0, 1, 1, 2, 0, 0, 0, time.UTC)   // 02:00 (next day)
+	clockOut := time.Date(0, 1, 1, 6, 0, 0, 0, time.UTC)   // 06:00 (next day)
+
+	times := make([]schedule.WorkScheduleTime, 0, 5)
+
+	// Monday to Friday (1-5) - night shift starts on these days
+	for day := 1; day <= 5; day++ {
+		times = append(times, schedule.WorkScheduleTime{
+			WorkScheduleID:    workScheduleID,
+			DayOfWeek:         day,
+			ClockInTime:       clockIn,
+			BreakStartTime:    &breakStart,
+			BreakEndTime:      &breakEnd,
+			ClockOutTime:      clockOut,
+			IsNextDayCheckout: true, // Clock out is on the next day
+			LocationType:      schedule.WorkArrangementWFO,
+		})
+	}
+
+	return times
+}
+
+// ==========================================
+// AFTERNOON/SECOND SHIFT SCHEDULE
+// ==========================================
+
+// GetAfternoonShiftWorkSchedule returns an afternoon/second shift schedule (14:00-22:00)
+func GetAfternoonShiftWorkSchedule(companyID string) schedule.WorkSchedule {
+	return schedule.WorkSchedule{
+		CompanyID:          companyID,
+		Name:               "Afternoon Shift",
+		Type:               schedule.WorkArrangementWFO,
+		GracePeriodMinutes: 15, // 15 minutes grace period
+	}
+}
+
+// GetAfternoonShiftWorkScheduleTimes returns afternoon shift hours (Mon-Fri 14:00-22:00)
+func GetAfternoonShiftWorkScheduleTimes(workScheduleID string) []schedule.WorkScheduleTime {
+	// Parse time for clock in/out
+	clockIn := time.Date(0, 1, 1, 14, 0, 0, 0, time.UTC)    // 14:00
+	breakStart := time.Date(0, 1, 1, 18, 0, 0, 0, time.UTC) // 18:00
+	breakEnd := time.Date(0, 1, 1, 19, 0, 0, 0, time.UTC)   // 19:00
+	clockOut := time.Date(0, 1, 1, 22, 0, 0, 0, time.UTC)   // 22:00
+
+	times := make([]schedule.WorkScheduleTime, 0, 5)
+
+	// Monday to Friday (1-5)
+	for day := 1; day <= 5; day++ {
+		times = append(times, schedule.WorkScheduleTime{
+			WorkScheduleID:    workScheduleID,
+			DayOfWeek:         day,
+			ClockInTime:       clockIn,
+			BreakStartTime:    &breakStart,
+			BreakEndTime:      &breakEnd,
+			ClockOutTime:      clockOut,
+			IsNextDayCheckout: false,
+			LocationType:      schedule.WorkArrangementWFO,
+		})
+	}
+
+	return times
+}
+
+// ==========================================
+// FLEXIBLE/WFA SCHEDULE
+// ==========================================
+
+// GetFlexibleWorkSchedule returns a flexible/WFA work schedule
+func GetFlexibleWorkSchedule(companyID string) schedule.WorkSchedule {
+	return schedule.WorkSchedule{
+		CompanyID:          companyID,
+		Name:               "Flexible Hours (WFA)",
+		Type:               schedule.WorkArrangementWFA,
+		GracePeriodMinutes: 30, // More lenient grace period for flexible work
+	}
+}
+
+// GetFlexibleWorkScheduleTimes returns flexible work hours (Mon-Fri 08:00-17:00)
+func GetFlexibleWorkScheduleTimes(workScheduleID string) []schedule.WorkScheduleTime {
+	// Parse time for clock in/out - flexible hours with wider window
+	clockIn := time.Date(0, 1, 1, 8, 0, 0, 0, time.UTC)     // 08:00
+	breakStart := time.Date(0, 1, 1, 12, 0, 0, 0, time.UTC) // 12:00
+	breakEnd := time.Date(0, 1, 1, 13, 0, 0, 0, time.UTC)   // 13:00
+	clockOut := time.Date(0, 1, 1, 17, 0, 0, 0, time.UTC)   // 17:00
+
+	times := make([]schedule.WorkScheduleTime, 0, 5)
+
+	// Monday to Friday (1-5)
+	for day := 1; day <= 5; day++ {
+		times = append(times, schedule.WorkScheduleTime{
+			WorkScheduleID:    workScheduleID,
+			DayOfWeek:         day,
+			ClockInTime:       clockIn,
+			BreakStartTime:    &breakStart,
+			BreakEndTime:      &breakEnd,
+			ClockOutTime:      clockOut,
+			IsNextDayCheckout: false,
+			LocationType:      schedule.WorkArrangementWFA,
+		})
+	}
+
+	return times
+}
+
+// ==========================================
+// ALL DEFAULT WORK SCHEDULES
+// ==========================================
+
+// WorkScheduleDefinition holds a schedule and its time generator
+type WorkScheduleDefinition struct {
+	Schedule    schedule.WorkSchedule
+	TimesGetter func(workScheduleID string) []schedule.WorkScheduleTime
+}
+
+// GetAllDefaultWorkSchedules returns all default work schedules for a new company
+func GetAllDefaultWorkSchedules(companyID string) []WorkScheduleDefinition {
+	return []WorkScheduleDefinition{
+		{
+			Schedule:    GetDefaultWorkSchedule(companyID),
+			TimesGetter: GetDefaultWorkScheduleTimes,
+		},
+		{
+			Schedule:    GetNightShiftWorkSchedule(companyID),
+			TimesGetter: GetNightShiftWorkScheduleTimes,
+		},
+		{
+			Schedule:    GetAfternoonShiftWorkSchedule(companyID),
+			TimesGetter: GetAfternoonShiftWorkScheduleTimes,
+		},
+		{
+			Schedule:    GetFlexibleWorkSchedule(companyID),
+			TimesGetter: GetFlexibleWorkScheduleTimes,
+		},
+	}
 }

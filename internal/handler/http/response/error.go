@@ -258,6 +258,8 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Work schedule type must be 'WFO'", nil)
 	case errors.Is(err, schedule.ErrEmployeeScheduleTimelineNotFound):
 		NotFound(w, "Employee schedule timeline not found")
+	case errors.Is(err, schedule.ErrMismatchedLocationType):
+		BadRequest(w, "Mismatched location type for work schedule", nil)
 
 	// Attendance domain errors
 	case errors.Is(err, attendance.ErrAlreadyCheckedIn):

@@ -143,15 +143,15 @@ func (w *workScheduleRepositoryImpl) Create(ctx context.Context, workSchedule sc
 
 	query := `
 		INSERT INTO work_schedules (
-			id, company_id, name, type, created_at, updated_at
+			id, company_id, name, type, grace_period_minutes, created_at, updated_at
 		) VALUES (
-			uuidv7(), $1, $2, $3, NOW(), NOW()
-		) RETURNING id, created_at, updated_at
+			uuidv7(), $1, $2, $3, $4, NOW(), NOW()
+		) RETURNING id, grace_period_minutes, created_at, updated_at
 	`
 
 	err := q.QueryRow(ctx, query,
-		workSchedule.CompanyID, workSchedule.Name, workSchedule.Type,
-	).Scan(&workSchedule.ID, &workSchedule.CreatedAt, &workSchedule.UpdatedAt)
+		workSchedule.CompanyID, workSchedule.Name, workSchedule.Type, workSchedule.GracePeriodMinutes,
+	).Scan(&workSchedule.ID, &workSchedule.GracePeriodMinutes, &workSchedule.CreatedAt, &workSchedule.UpdatedAt)
 
 	if err != nil {
 		return schedule.WorkSchedule{}, err
@@ -181,77 +181,101 @@ func (w *workScheduleRepositoryImpl) Delete(ctx context.Context, id, companyID s
 func (w *workScheduleRepositoryImpl) GetByCompanyID(ctx context.Context, companyID string, filter schedule.WorkScheduleFilter) ([]schedule.WorkSchedule, int64, error) {
 	q := GetQuerier(ctx, w.db)
 
-	// Base query
-	baseQuery := `
-		FROM work_schedules
-		WHERE company_id = $1 AND deleted_at IS NULL
-	`
-
+	// Build WHERE for base table (work_schedules) with parameterized args
+	baseWhere := "ws.company_id = $1 AND ws.deleted_at IS NULL"
 	args := []interface{}{companyID}
 	argIdx := 2
 
-	// Build WHERE clause dynamically
-	whereClauses := []string{}
-
-	// Filter by name (ILIKE for case-insensitive search)
+	// Dynamic filters on base table
 	if filter.Name != nil && *filter.Name != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("name ILIKE $%d", argIdx))
+		baseWhere += fmt.Sprintf(" AND ws.name ILIKE $%d", argIdx)
 		args = append(args, "%"+*filter.Name+"%")
 		argIdx++
 	}
-
-	// Filter by type
 	if filter.Type != nil && *filter.Type != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("type = $%d", argIdx))
+		baseWhere += fmt.Sprintf(" AND ws.type = $%d", argIdx)
 		args = append(args, *filter.Type)
 		argIdx++
 	}
 
-	// Append WHERE clauses
-	if len(whereClauses) > 0 {
-		baseQuery += " AND " + strings.Join(whereClauses, " AND ")
-	}
-
-	// COUNT query for total records
-	countQuery := "SELECT COUNT(*) " + baseQuery
+	// COUNT total schedules (without joins)
+	countQuery := "SELECT COUNT(*) FROM work_schedules ws WHERE " + baseWhere
 	var total int64
-	err := q.QueryRow(ctx, countQuery, args...).Scan(&total)
-	if err != nil {
+	if err := q.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("failed to count work schedules: %w", err)
 	}
 
-	// Main SELECT query
-	selectQuery := `
-		SELECT id, company_id, name, type, created_at, updated_at
-	` + baseQuery
-
-	// ORDER BY clause
-	orderBy := "name ASC" // Default
+	// ORDER BY based on base table fields
+	orderByField := "ws.name"
+	outerOrderByField := "ps.name"
 	switch filter.SortBy {
 	case "type":
-		orderBy = "type"
+		orderByField = "ws.type"
+		outerOrderByField = "ps.type"
 	case "created_at":
-		orderBy = "created_at"
+		orderByField = "ws.created_at"
+		outerOrderByField = "ps.created_at"
 	case "updated_at":
-		orderBy = "updated_at"
+		orderByField = "ws.updated_at"
+		outerOrderByField = "ps.updated_at"
 	}
-
+	sortOrder := "ASC"
 	if strings.ToLower(filter.SortOrder) == "desc" {
-		orderBy += " DESC"
-	} else {
-		orderBy += " ASC"
+		sortOrder = "DESC"
 	}
 
-	selectQuery += " ORDER BY " + orderBy
-
-	// Pagination
+	// Pagination - apply to base table first, then join
 	limit := filter.Limit
 	if limit == 0 {
 		limit = 20
 	}
 	offset := (filter.Page - 1) * limit
 
-	selectQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	// Main SELECT with subquery to paginate work_schedules first, then LEFT JOIN times and locations
+	// This ensures we get all times/locations for the paginated schedules
+	selectQuery := fmt.Sprintf(`
+		WITH paginated_schedules AS (
+			SELECT 
+				ws.id,
+				ws.company_id,
+				ws.name,
+				ws.type,
+				ws.grace_period_minutes,
+				ws.created_at,
+				ws.updated_at
+			FROM work_schedules ws
+			WHERE %s
+			ORDER BY %s %s
+			LIMIT $%d OFFSET $%d
+		)
+		SELECT 
+			ps.id,
+			ps.company_id,
+			ps.name,
+			ps.type,
+			ps.grace_period_minutes,
+			ps.created_at,
+			ps.updated_at,
+			wst.id AS time_id,
+			wst.day_of_week,
+			wst.clock_in_time,
+			wst.clock_out_time,
+			wst.break_start_time,
+			wst.break_end_time,
+			wst.location_type,
+			wst.created_at AS time_created_at,
+			wst.updated_at AS time_updated_at,
+			wsl.id AS location_id,
+			wsl.location_name,
+			wsl.latitude,
+			wsl.longitude,
+			wsl.radius_meters
+		FROM paginated_schedules ps
+		LEFT JOIN work_schedule_times wst ON wst.work_schedule_id = ps.id
+		LEFT JOIN work_schedule_locations wsl ON wsl.work_schedule_id = ps.id
+		ORDER BY %s %s, wst.day_of_week ASC
+	`, baseWhere, orderByField, sortOrder, argIdx, argIdx+1, outerOrderByField, sortOrder)
+
 	args = append(args, limit, offset)
 
 	// Execute query
@@ -268,14 +292,14 @@ func (w *workScheduleRepositoryImpl) GetByCompanyID(ctx context.Context, company
 func (w *workScheduleRepositoryImpl) GetByID(ctx context.Context, id string, companyID string) (schedule.WorkSchedule, error) {
 	q := GetQuerier(ctx, w.db)
 	query := `
-		SELECT id, company_id, name, type, created_at, updated_at
+		SELECT id, company_id, name, type, grace_period_minutes, created_at, updated_at
 		FROM work_schedules
 		WHERE id = $1 AND company_id = $2 AND deleted_at IS NULL
 	`
 
 	var ws schedule.WorkSchedule
 	err := q.QueryRow(ctx, query, id, companyID).Scan(
-		&ws.ID, &ws.CompanyID, &ws.Name, &ws.Type, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.CompanyID, &ws.Name, &ws.Type, &ws.GracePeriodMinutes, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 
 	if err != nil {
@@ -347,8 +371,10 @@ func (r *workScheduleRepositoryImpl) mapRowsToWorkSchedules(rows pgx.Rows, total
 
 		err := rows.Scan(
 			&raw.WorkScheduleID, &raw.CompanyID, &raw.Name, &raw.Type,
+			&raw.GracePeriodMinutes, &raw.CreatedAt, &raw.UpdatedAt,
 			&raw.TimeID, &raw.DayOfWeek, &raw.ClockInTime, &raw.ClockOutTime,
 			&raw.BreakStartTime, &raw.BreakEndTime, &raw.LocationType,
+			&raw.TimeCreatedAt, &raw.TimeUpdatedAt,
 			&raw.LocationID, &raw.LocationName, &raw.Latitude, &raw.Longitude, &raw.RadiusMeters,
 		)
 		if err != nil {
@@ -359,12 +385,15 @@ func (r *workScheduleRepositoryImpl) mapRowsToWorkSchedules(rows pgx.Rows, total
 		ws, exists := schedulesMap[raw.WorkScheduleID]
 		if !exists {
 			ws = &schedule.WorkSchedule{
-				ID:        raw.WorkScheduleID,
-				CompanyID: raw.CompanyID,
-				Name:      raw.Name,
-				Type:      schedule.WorkArrangement(raw.Type),
-				Times:     []schedule.WorkScheduleTime{},
-				Locations: []schedule.WorkScheduleLocation{},
+				ID:                 raw.WorkScheduleID,
+				CompanyID:          raw.CompanyID,
+				Name:               raw.Name,
+				Type:               schedule.WorkArrangement(raw.Type),
+				GracePeriodMinutes: raw.GracePeriodMinutes,
+				CreatedAt:          raw.CreatedAt,
+				UpdatedAt:          raw.UpdatedAt,
+				Times:              []schedule.WorkScheduleTime{},
+				Locations:          []schedule.WorkScheduleLocation{},
 			}
 			schedulesMap[raw.WorkScheduleID] = ws
 		}
@@ -381,7 +410,7 @@ func (r *workScheduleRepositoryImpl) mapRowsToWorkSchedules(rows pgx.Rows, total
 			}
 
 			if !isDuplicate {
-				ws.Times = append(ws.Times, schedule.WorkScheduleTime{
+				wsTime := schedule.WorkScheduleTime{
 					ID:             *raw.TimeID,
 					WorkScheduleID: raw.WorkScheduleID,
 					DayOfWeek:      *raw.DayOfWeek,
@@ -390,7 +419,14 @@ func (r *workScheduleRepositoryImpl) mapRowsToWorkSchedules(rows pgx.Rows, total
 					BreakStartTime: raw.BreakStartTime,
 					BreakEndTime:   raw.BreakEndTime,
 					LocationType:   schedule.WorkArrangement(*raw.LocationType),
-				})
+				}
+				if raw.TimeCreatedAt != nil {
+					wsTime.CreatedAt = *raw.TimeCreatedAt
+				}
+				if raw.TimeUpdatedAt != nil {
+					wsTime.UpdatedAt = *raw.TimeUpdatedAt
+				}
+				ws.Times = append(ws.Times, wsTime)
 			}
 		}
 
@@ -597,10 +633,13 @@ func NewWorkScheduleRepository(db *database.DB) schedule.WorkScheduleRepository 
 // Internal DTO for query result (tidak expose ke domain)
 type workScheduleWithRelations struct {
 	// Work Schedule fields
-	WorkScheduleID string
-	CompanyID      string
-	Name           string
-	Type           string
+	WorkScheduleID     string
+	CompanyID          string
+	Name               string
+	Type               string
+	GracePeriodMinutes int
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 
 	// Work Schedule Time fields (nullable karena LEFT JOIN)
 	TimeID         *string
@@ -610,6 +649,8 @@ type workScheduleWithRelations struct {
 	BreakStartTime *time.Time
 	BreakEndTime   *time.Time
 	LocationType   *string
+	TimeCreatedAt  *time.Time
+	TimeUpdatedAt  *time.Time
 
 	// Work Schedule Location fields (nullable karena LEFT JOIN)
 	LocationID   *string

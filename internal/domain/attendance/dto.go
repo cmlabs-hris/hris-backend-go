@@ -119,6 +119,7 @@ type AttendanceResponse struct {
 	ID                string   `json:"id"`
 	EmployeeID        string   `json:"employee_id"`
 	EmployeeName      string   `json:"employee_name"`
+	EmployeePosition  *string  `json:"employee_position,omitempty"`
 	Date              string   `json:"date"`
 	ClockInTime       *string  `json:"clock_in_time,omitempty"`
 	ClockOutTime      *string  `json:"clock_out_time,omitempty"`
@@ -134,6 +135,8 @@ type AttendanceResponse struct {
 	IsEarlyLeave      *bool    `json:"is_early_leave,omitempty"`
 	LateMinutes       *int     `json:"late_minutes,omitempty"`
 	EarlyLeaveMinutes *int     `json:"early_leave_minutes,omitempty"`
+	CreatedAt         string   `json:"created_at"`
+	UpdatedAt         string   `json:"updated_at"`
 }
 
 type AttendanceFilter struct {
@@ -381,4 +384,107 @@ type ListAttendanceResponse struct {
 	TotalPages  int                  `json:"total_pages"`
 	Showing     string               `json:"showing"`
 	Attendances []AttendanceResponse `json:"attendances"`
+}
+
+// UpdateAttendanceRequest for admin/manager to update attendance records
+// This allows fixing wrong attendance data, employee forgot to clock in/out, etc.
+type UpdateAttendanceRequest struct {
+	ID                string   `json:"-"`
+	Date              *string  `json:"date,omitempty"`           // YYYY-MM-DD
+	ClockInTime       *string  `json:"clock_in_time,omitempty"`  // HH:MM:SS or full datetime
+	ClockOutTime      *string  `json:"clock_out_time,omitempty"` // HH:MM:SS or full datetime
+	ClockInLatitude   *float64 `json:"clock_in_latitude,omitempty"`
+	ClockInLongitude  *float64 `json:"clock_in_longitude,omitempty"`
+	ClockOutLatitude  *float64 `json:"clock_out_latitude,omitempty"`
+	ClockOutLongitude *float64 `json:"clock_out_longitude,omitempty"`
+	Status            *string  `json:"status,omitempty"`
+	LateMinutes       *int     `json:"late_minutes,omitempty"`
+	EarlyLeaveMinutes *int     `json:"early_leave_minutes,omitempty"`
+	OvertimeMinutes   *int     `json:"overtime_minutes,omitempty"`
+}
+
+func (r *UpdateAttendanceRequest) Validate() error {
+	var errs validator.ValidationErrors
+
+	if r.Date != nil && *r.Date != "" {
+		if _, valid := validator.IsValidDate(*r.Date); !valid {
+			errs = append(errs, validator.ValidationError{
+				Field:   "date",
+				Message: "date must be in YYYY-MM-DD format",
+			})
+		}
+	}
+
+	if r.Status != nil {
+		validStatuses := []string{"present", "absent", "late", "on_leave", "holiday", "waiting_approval"}
+		if !validator.IsInSlice(strings.ToLower(*r.Status), validStatuses) {
+			errs = append(errs, validator.ValidationError{
+				Field:   "status",
+				Message: "status must be one of: present, absent, late, on_leave, holiday, waiting_approval",
+			})
+		}
+	}
+
+	if r.ClockInLatitude != nil && (*r.ClockInLatitude < -90 || *r.ClockInLatitude > 90) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_latitude",
+			Message: "clock_in_latitude must be between -90 and 90",
+		})
+	}
+
+	if r.ClockInLongitude != nil && (*r.ClockInLongitude < -180 || *r.ClockInLongitude > 180) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_in_longitude",
+			Message: "clock_in_longitude must be between -180 and 180",
+		})
+	}
+
+	if r.ClockOutLatitude != nil && (*r.ClockOutLatitude < -90 || *r.ClockOutLatitude > 90) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_out_latitude",
+			Message: "clock_out_latitude must be between -90 and 90",
+		})
+	}
+
+	if r.ClockOutLongitude != nil && (*r.ClockOutLongitude < -180 || *r.ClockOutLongitude > 180) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "clock_out_longitude",
+			Message: "clock_out_longitude must be between -180 and 180",
+		})
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+
+	return nil
+}
+
+// ApproveAttendanceRequest for approving attendance
+type ApproveAttendanceRequest struct {
+	ID    string  `json:"-"`
+	Notes *string `json:"notes,omitempty"` // Optional approval notes
+}
+
+// RejectAttendanceRequest for rejecting attendance
+type RejectAttendanceRequest struct {
+	ID     string `json:"-"`
+	Reason string `json:"reason"` // Required rejection reason
+}
+
+func (r *RejectAttendanceRequest) Validate() error {
+	var errs validator.ValidationErrors
+
+	if validator.IsEmpty(r.Reason) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "reason",
+			Message: "rejection reason is required",
+		})
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+
+	return nil
 }

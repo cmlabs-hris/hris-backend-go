@@ -29,4 +29,7 @@ type AttendanceRepository interface {
 
 	HasCheckedInToday(ctx context.Context, employeeID string, dateLocal string, companyID string) (bool, error)
 	GetOpenSession(ctx context.Context, employeeID string) (Attendance, error)
+
+	// Delete soft deletes an attendance record
+	Delete(ctx context.Context, id string, companyID string) error
 }

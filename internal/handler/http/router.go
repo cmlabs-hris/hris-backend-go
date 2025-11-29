@@ -37,8 +37,10 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	// r.Use(chiMiddleware.RealIP)
 
 	r.Use(httplog.RequestLogger(logger, &httplog.Options{
-		Level:  slog.LevelDebug,
-		Schema: httplog.SchemaECS,
+		Level:           slog.LevelDebug,
+		Schema:          httplog.SchemaECS,
+		LogRequestBody:  func(req *http.Request) bool { return true },
+		LogResponseBody: func(req *http.Request) bool { return true },
 	}))
 
 	r.Use(chiMiddleware.AllowContentType("application/json", "multipart/form-data"))
@@ -183,7 +185,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 				r.Get("/", scheduleHandler.ListWorkSchedules)   // All
 				r.Get("/{id}", scheduleHandler.GetWorkSchedule) // All
 
-				r.Get("/{scheduleID}/employee/{employeeID}", scheduleHandler.AssignSchedule)
+				r.Post("/{scheduleID}/employee/{employeeID}", scheduleHandler.AssignSchedule)
 				r.Put("/{assignID}/employee/{employeeID}", scheduleHandler.UpdateEmployeeScheduleAssignment)
 				r.Delete("/{assignID}/employee/{employeeID}", scheduleHandler.DeleteEmployeeScheduleAssignment)
 				// Employee Schedule Timeline
@@ -234,7 +236,15 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 
 			// Attendance Routes
 			r.Route("/attendance", func(r chi.Router) {
-				r.Get("/", attendanceHandler.List)               // All with filters
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireManager)
+					r.Get("/", attendanceHandler.List)                 // All with filters
+					r.Get("/{id}", attendanceHandler.Get)              // Get single attendance
+					r.Put("/{id}", attendanceHandler.Update)           // Update attendance (fix records)
+					r.Delete("/{id}", attendanceHandler.Delete)        // Delete attendance
+					r.Post("/{id}/approve", attendanceHandler.Approve) // Approve attendance
+					r.Post("/{id}/reject", attendanceHandler.Reject)   // Reject attendance
+				})
 				r.Get("/my", attendanceHandler.GetMyAttendance)  // Get my attendance records
 				r.Post("/clock-in", attendanceHandler.ClockIn)   // Clock in
 				r.Post("/clock-out", attendanceHandler.ClockOut) // Clock out

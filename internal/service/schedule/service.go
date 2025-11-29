@@ -163,7 +163,7 @@ func (s *scheduleServiceImpl) CreateWorkSchedule(ctx context.Context, req schedu
 		CompanyID:          companyID,
 		Name:               req.Name,
 		Type:               schedule.WorkArrangement(req.Type),
-		GracePeriodMinutes: req.GracePeriodMinutes,
+		GracePeriodMinutes: *req.GracePeriodMinutes,
 	}
 
 	createdSchedule, err := s.workScheduleRepo.Create(ctx, ws)
@@ -262,15 +262,32 @@ func (s *scheduleServiceImpl) CreateWorkScheduleTime(ctx context.Context, req sc
 		breakEnd = &t
 	}
 
+	wsData, err := s.workScheduleRepo.GetByID(ctx, req.WorkScheduleID, companyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schedule.WorkScheduleTimeResponse{}, schedule.ErrWorkScheduleNotFound
+		}
+		return schedule.WorkScheduleTimeResponse{}, fmt.Errorf("failed to get work schedule: %w", err)
+	}
+
+	// location type validation
+	if wsData.Type == schedule.WorkArrangementWFO && req.LocationType != string(schedule.WorkArrangementWFO) {
+		return schedule.WorkScheduleTimeResponse{}, schedule.ErrMismatchedLocationType
+	}
+
+	if wsData.Type == schedule.WorkArrangementWFA && req.LocationType != string(schedule.WorkArrangementWFA) {
+		return schedule.WorkScheduleTimeResponse{}, schedule.ErrMismatchedLocationType
+	}
+
 	wst := schedule.WorkScheduleTime{
 		WorkScheduleID:    req.WorkScheduleID,
-		DayOfWeek:         req.DayOfWeek,
+		DayOfWeek:         *req.DayOfWeek,
 		ClockInTime:       clockIn,
 		BreakStartTime:    breakStart,
 		BreakEndTime:      breakEnd,
 		ClockOutTime:      clockOut,
 		LocationType:      schedule.WorkArrangement(req.LocationType),
-		IsNextDayCheckout: req.IsNextDayCheckout,
+		IsNextDayCheckout: *req.IsNextDayCheckout,
 	}
 
 	// Repository Create will verify work_schedule belongs to company via EXISTS subquery
@@ -291,7 +308,25 @@ func (s *scheduleServiceImpl) CreateWorkScheduleTime(ctx context.Context, req sc
 
 // DeleteEmployeeScheduleAssignment implements schedule.ScheduleService.
 func (s *scheduleServiceImpl) DeleteEmployeeScheduleAssignment(ctx context.Context, id string) error {
-	panic("unimplemented")
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id claim is missing or invalid")
+	}
+
+	err = s.employeeScheduleAssignRepo.Delete(ctx, id, companyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schedule.ErrEmployeeScheduleAssignmentNotFound
+		}
+		return fmt.Errorf("failed to delete employee schedule assignment: %w", err)
+	}
+
+	return nil
 }
 
 // DeleteWorkSchedule implements schedule.ScheduleService.
@@ -566,12 +601,15 @@ func (s *scheduleServiceImpl) ListWorkSchedules(ctx context.Context, filter sche
 			locationResponse = append(locationResponse, s.mapWorkScheduleLocationToResponse(wsLocation))
 		}
 		workScheduleResponses = append(workScheduleResponses, schedule.WorkScheduleResponse{
-			ID:        ws.ID,
-			CompanyID: ws.CompanyID,
-			Name:      ws.Name,
-			Type:      string(ws.Type),
-			Times:     timeResponse,
-			Locations: locationResponse,
+			ID:                 ws.ID,
+			CompanyID:          ws.CompanyID,
+			Name:               ws.Name,
+			Type:               string(ws.Type),
+			GracePeriodMinutes: ws.GracePeriodMinutes,
+			Times:              timeResponse,
+			Locations:          locationResponse,
+			CreatedAt:          ws.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:          ws.UpdatedAt.Format(time.RFC3339),
 		})
 
 	}
@@ -603,7 +641,33 @@ func (s *scheduleServiceImpl) ListWorkSchedules(ctx context.Context, filter sche
 
 // UpdateEmployeeScheduleAssignment implements schedule.ScheduleService.
 func (s *scheduleServiceImpl) UpdateEmployeeScheduleAssignment(ctx context.Context, req schedule.UpdateEmployeeScheduleAssignmentRequest) error {
-	panic("unimplemented")
+	if err := req.Validate(); err != nil {
+		return err
+	}
+
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to extract claims from context: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return fmt.Errorf("company_id claim is missing or invalid")
+	}
+
+	err = s.employeeScheduleAssignRepo.Update(ctx, req, companyID)
+	if err != nil {
+		if errors.Is(err, schedule.ErrEmployeeScheduleAssignmentNotFound) {
+			return schedule.ErrEmployeeScheduleAssignmentNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23P01" {
+			return schedule.ErrOverlappingScheduleAssignment
+		}
+		return fmt.Errorf("failed to update employee schedule assignment: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateWorkSchedule implements schedule.ScheduleService.
@@ -699,6 +763,32 @@ func (s *scheduleServiceImpl) UpdateWorkScheduleTime(ctx context.Context, req sc
 
 	req.CompanyID = companyID
 
+	// location type validation
+	wsTimeData, err := s.workScheduleTimeRepo.GetByID(ctx, req.ID, companyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schedule.ErrWorkScheduleTimeNotFound
+		}
+		return fmt.Errorf("failed to get work schedule time: %w", err)
+	}
+
+	wsData, err := s.workScheduleRepo.GetByID(ctx, wsTimeData.WorkScheduleID, companyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return schedule.ErrWorkScheduleNotFound
+		}
+		return fmt.Errorf("failed to get work schedule: %w", err)
+	}
+
+	// location type validation
+	if wsData.Type == schedule.WorkArrangementWFO && req.LocationType != string(schedule.WorkArrangementWFO) {
+		return schedule.ErrMismatchedLocationType
+	}
+
+	if wsData.Type == schedule.WorkArrangementWFA && req.LocationType != string(schedule.WorkArrangementWFA) {
+		return schedule.ErrMismatchedLocationType
+	}
+
 	err = s.workScheduleTimeRepo.Update(ctx, req)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -715,6 +805,7 @@ func (s *scheduleServiceImpl) UpdateWorkScheduleTime(ctx context.Context, req sc
 }
 
 func NewScheduleService(
+	db *database.DB,
 	workScheduleRepo schedule.WorkScheduleRepository,
 	workScheduleTimeRepo schedule.WorkScheduleTimeRepository,
 	workScheduleLocationRepo schedule.WorkScheduleLocationRepository,
@@ -722,6 +813,7 @@ func NewScheduleService(
 	employeeRepo employee.EmployeeRepository,
 ) schedule.ScheduleService {
 	return &scheduleServiceImpl{
+		db:                         db,
 		workScheduleRepo:           workScheduleRepo,
 		workScheduleTimeRepo:       workScheduleTimeRepo,
 		workScheduleLocationRepo:   workScheduleLocationRepo,
@@ -754,6 +846,8 @@ func (s *scheduleServiceImpl) mapWorkScheduleTimeToResponse(wst schedule.WorkSch
 		ClockOutTime:      wst.ClockOutTime.Format("15:04"),
 		LocationType:      string(wst.LocationType),
 		IsNextDayCheckout: wst.IsNextDayCheckout,
+		CreatedAt:         wst.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:         wst.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -765,6 +859,8 @@ func (s *scheduleServiceImpl) mapWorkScheduleLocationToResponse(wsl schedule.Wor
 		Latitude:       wsl.Latitude,
 		Longitude:      wsl.Longitude,
 		RadiusMeters:   wsl.RadiusMeters,
+		CreatedAt:      wsl.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      wsl.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -775,6 +871,8 @@ func (s *scheduleServiceImpl) mapEmployeeScheduleAssignmentToResponse(esa schedu
 		WorkScheduleID: esa.WorkScheduleID,
 		StartDate:      esa.StartDate.Format("2006-01-02"),
 		EndDate:        esa.EndDate.Format("2006-01-02"),
+		CreatedAt:      esa.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:      esa.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -845,10 +943,10 @@ func (s *scheduleServiceImpl) calculateTimelineStatus(item *schedule.EmployeeSch
 	// For override schedules
 	if item.DateRange.Start != nil {
 		startDate, _ := time.Parse("2006-01-02", *item.DateRange.Start)
-		
+
 		if item.DateRange.End != nil {
 			endDate, _ := time.Parse("2006-01-02", *item.DateRange.End)
-			
+
 			if today.Before(startDate) {
 				return "upcoming"
 			} else if today.After(endDate) {
@@ -865,10 +963,10 @@ func (s *scheduleServiceImpl) calculateTimelineStatus(item *schedule.EmployeeSch
 // isScheduleActiveToday checks if this schedule is actually being used today
 func (s *scheduleServiceImpl) isScheduleActiveToday(item *schedule.EmployeeScheduleTimelineItem, today time.Time, allItems []schedule.EmployeeScheduleTimelineItem) bool {
 	todayStr := today.Format("2006-01-02")
-	
+
 	// Check if this schedule covers today
 	coversToday := false
-	
+
 	if item.Type == "default" {
 		// Default always covers from start_date onwards
 		if item.DateRange.Start != nil {
@@ -886,16 +984,16 @@ func (s *scheduleServiceImpl) isScheduleActiveToday(item *schedule.EmployeeSched
 			}
 		}
 	}
-	
+
 	if !coversToday {
 		return false
 	}
-	
+
 	// If this is an override that covers today, it's active
 	if item.Type == "override" {
 		return true
 	}
-	
+
 	// If this is default, check if any override is active today
 	for _, otherItem := range allItems {
 		if otherItem.Type == "override" {
@@ -906,7 +1004,7 @@ func (s *scheduleServiceImpl) isScheduleActiveToday(item *schedule.EmployeeSched
 			}
 		}
 	}
-	
+
 	return true // No active override, default is active
 }
 
@@ -932,13 +1030,13 @@ func (s *scheduleServiceImpl) calculateShowingText(page, limit int, total int64)
 	if total == 0 {
 		return "0-0 of 0 results"
 	}
-	
+
 	start := (page-1)*limit + 1
 	end := start + limit - 1
-	
+
 	if end > int(total) {
 		end = int(total)
 	}
-	
+
 	return fmt.Sprintf("%d-%d of %d results", start, end, total)
 }

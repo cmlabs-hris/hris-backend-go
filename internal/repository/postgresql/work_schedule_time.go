@@ -49,48 +49,45 @@ func (r *workScheduleTimeRepositoryImpl) GetByID(ctx context.Context, id string,
 func (r *workScheduleTimeRepositoryImpl) Update(ctx context.Context, req schedule.UpdateWorkScheduleTimeRequest) error {
 	q := GetQuerier(ctx, r.db)
 
-	updates := make([]string, 0)
-	args := make([]interface{}, 0)
-	argIdx := 1
+	updates := []string{
+		"clock_in_time = $1",
+		"clock_out_time = $2",
+		"is_next_day_checkout = $3",
+		"location_type = $4",
+		"updated_at = $5",
+	}
+	args := []interface{}{
+		req.ClockInTime,
+		req.ClockOutTime,
+		*req.IsNextDayCheckout,
+		req.LocationType,
+		time.Now(),
+	}
+	argIdx := 6
 
-	if req.ClockInTime != nil {
-		updates = append(updates, fmt.Sprintf("clock_in_time = $%d", argIdx))
-		args = append(args, *req.ClockInTime)
+	// Optional fields
+	if req.DayOfWeek != nil {
+		updates = append(updates, fmt.Sprintf("day_of_week = $%d", argIdx))
+		args = append(args, *req.DayOfWeek)
 		argIdx++
 	}
 	if req.BreakStartTime != nil {
 		updates = append(updates, fmt.Sprintf("break_start_time = $%d", argIdx))
 		args = append(args, *req.BreakStartTime)
 		argIdx++
+	} else {
+		updates = append(updates, fmt.Sprintf("break_start_time = $%d", argIdx))
+		args = append(args, nil)
+		argIdx++
 	}
 	if req.BreakEndTime != nil {
 		updates = append(updates, fmt.Sprintf("break_end_time = $%d", argIdx))
 		args = append(args, *req.BreakEndTime)
 		argIdx++
-	}
-	if req.ClockOutTime != nil {
-		updates = append(updates, fmt.Sprintf("clock_out_time = $%d", argIdx))
-		args = append(args, *req.ClockOutTime)
+	} else {
+		updates = append(updates, fmt.Sprintf("break_end_time = $%d", argIdx))
+		args = append(args, nil)
 		argIdx++
-	}
-	if req.IsNextDayCheckout != nil {
-		updates = append(updates, fmt.Sprintf("is_next_day_checkout = $%d", argIdx))
-		args = append(args, *req.IsNextDayCheckout)
-		argIdx++
-	}
-	if req.LocationType != nil {
-		updates = append(updates, fmt.Sprintf("location_type = $%d", argIdx))
-		args = append(args, *req.LocationType)
-		argIdx++
-	}
-
-	// Always update the updated_at field
-	updates = append(updates, fmt.Sprintf("updated_at = $%d", argIdx))
-	args = append(args, time.Now())
-	argIdx++
-
-	if len(updates) == 0 {
-		return fmt.Errorf("no updatable fields provided for work schedule time update")
 	}
 
 	args = append(args, req.ID)

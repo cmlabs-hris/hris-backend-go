@@ -17,4 +17,19 @@ type AttendanceService interface {
 
 	// ListAttendance retrieves attendance records with filters (admin/manager)
 	ListAttendance(ctx context.Context, filter AttendanceFilter) (ListAttendanceResponse, error)
+
+	// UpdateAttendance updates an attendance record (admin/manager) - for fixing wrong data
+	UpdateAttendance(ctx context.Context, req UpdateAttendanceRequest) (AttendanceResponse, error)
+
+	// GetAttendance retrieves a single attendance record by ID
+	GetAttendance(ctx context.Context, id string) (AttendanceResponse, error)
+
+	// ApproveAttendance approves an attendance record
+	ApproveAttendance(ctx context.Context, req ApproveAttendanceRequest) (AttendanceResponse, error)
+
+	// RejectAttendance rejects an attendance record with reason
+	RejectAttendance(ctx context.Context, req RejectAttendanceRequest) (AttendanceResponse, error)
+
+	// DeleteAttendance soft deletes an attendance record
+	DeleteAttendance(ctx context.Context, id string) error
 }
