@@ -61,7 +61,7 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 	timezoneStr, err := a.BranchRepository.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return attendance.AttendanceResponse{}, attendance.ErrNoScheduleFound
+			return attendance.AttendanceResponse{}, branch.ErrInvalidTimezone
 		}
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get timezone by employee ID: %w", err)
 	}
@@ -188,7 +188,6 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 	return attendance.AttendanceResponse{
 		ID:                attendanceResult.ID,
 		EmployeeID:        attendanceResult.EmployeeID,
-		EmployeeName:      *attendanceResult.EmployeeName,
 		Date:              attendanceResult.Date.Format("2006-01-02"),
 		ClockInTime:       timePtrToString(attendanceResult.ClockIn),
 		ClockOutTime:      timePtrToString(attendanceResult.ClockOut),
@@ -312,7 +311,6 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 	return attendance.AttendanceResponse{
 		ID:                attendanceData.ID,
 		EmployeeID:        attendanceData.EmployeeID,
-		EmployeeName:      *attendanceData.EmployeeName,
 		Date:              attendanceData.Date.Format("2006-01-02"),
 		ClockInTime:       timePtrToString(attendanceData.ClockIn),
 		ClockOutTime:      timePtrToString(attendanceData.ClockOut),
@@ -625,12 +623,47 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get attendance: %w", err)
 	}
 
+	// Determine status based on clock in time and schedule
+	status := "on_time" // Default to on_time
+	lateMinutes := 0
+
+	if att.WorkScheduleTimeID != nil && att.ClockIn != nil {
+		// Get the schedule time to determine if late
+		scheduleTime, err := a.WorkScheduleTimeRepository.GetByID(ctx, *att.WorkScheduleTimeID, companyID)
+		if err == nil {
+			// Get the work schedule for grace period
+			workSchedule, err := a.WorkScheduleRepository.GetByID(ctx, scheduleTime.WorkScheduleID, companyID)
+			if err == nil {
+				// Calculate scheduled clock-in time for the attendance date
+				scheduledInTime := time.Date(
+					att.Date.Year(), att.Date.Month(), att.Date.Day(),
+					scheduleTime.ClockInTime.Hour(), scheduleTime.ClockInTime.Minute(), 0, 0,
+					att.ClockIn.Location(),
+				)
+
+				// Add grace period
+				graceLimitTime := scheduledInTime.Add(time.Duration(workSchedule.GracePeriodMinutes) * time.Minute)
+
+				// Check if clock in is after grace period
+				if att.ClockIn.After(graceLimitTime) {
+					status = "late"
+					// Calculate late minutes from scheduled time (not grace period)
+					diff := att.ClockIn.Sub(scheduledInTime).Minutes()
+					if diff > 0 {
+						lateMinutes = int(math.Floor(diff))
+					}
+				}
+			}
+		}
+	}
+
 	// Update status and approver info
 	now := time.Now()
-	att.Status = "approved"
+	att.Status = status
 	att.ApprovedBy = &userID
 	att.ApprovedAt = &now
 	att.RejectionReason = nil // Clear any rejection reason
+	att.LateMinutes = &lateMinutes
 
 	// Update in repository
 	if err := a.AttendanceRepository.Update(ctx, att); err != nil {

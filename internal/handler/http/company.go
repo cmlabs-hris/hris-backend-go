@@ -80,7 +80,26 @@ func (c *CompanyHandlerImpl) Create(w http.ResponseWriter, r *http.Request) {
 
 // Delete implements CompanyHandler.
 func (c *CompanyHandlerImpl) Delete(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+	// Get company_id from JWT
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		slog.Error("Failed to get JWT claims", "error", err)
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+	companyID, exist := claims["company_id"].(string)
+	if companyID == "" || !exist {
+		slog.Error("company_id not found in JWT claims", "claims", claims)
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+
+	if err := c.companyService.Delete(r.Context(), companyID); err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.SuccessWithMessage(w, "Company deleted successfully", nil)
 }
 
 // GetByID implements CompanyHandler.

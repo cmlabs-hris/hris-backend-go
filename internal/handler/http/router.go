@@ -37,10 +37,10 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	// r.Use(chiMiddleware.RealIP)
 
 	r.Use(httplog.RequestLogger(logger, &httplog.Options{
-		Level:           slog.LevelDebug,
-		Schema:          httplog.SchemaECS,
-		LogRequestBody:  func(req *http.Request) bool { return true },
-		LogResponseBody: func(req *http.Request) bool { return true },
+		Level:  slog.LevelDebug,
+		Schema: httplog.SchemaECS,
+		// LogRequestBody:  func(req *http.Request) bool { return true },
+		// LogResponseBody: func(req *http.Request) bool { return true },
 	}))
 
 	r.Use(chiMiddleware.AllowContentType("application/json", "multipart/form-data"))

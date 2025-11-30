@@ -1,141 +1,78 @@
 {
     "openapi": "3.1.1",
     "info": {
-        "title": "HRIS Api Documentation",
+        "title": "HRIS API",
         "version": "1.0.0",
-        "description": "API documentation for the HRIS backend service."
+        "description": "Comprehensive API documentation for the HRIS backend service."
     },
     "servers": [
         {
-            "url": "https://localhost:8080/api/v1"
+            "url": "http://localhost:8080/api/v1",
+            "description": "Local development server"
         }
     ],
     "tags": [
         {
             "name": "Auth",
-            "description": "Authentication endpoints"
+            "description": "Authentication and session management"
         },
         {
-            "name": "Companies",
-            "description": "Company management endpoints"
+            "name": "Company",
+            "description": "Company lifecycle and profile"
         },
         {
-            "name": "Users",
-            "description": "User management endpoints"
+            "name": "Leave",
+            "description": "Leave types, quotas, and requests"
         },
         {
-            "name": "Employees",
-            "description": "Employee management endpoints"
+            "name": "Master",
+            "description": "Master data: branches, grades, positions"
+        },
+        {
+            "name": "Schedule",
+            "description": "Work schedules, locations, and assignments"
+        },
+        {
+            "name": "Attendance",
+            "description": "Employee attendance and time tracking"
         }
     ],
     "paths": {
         "/auth/register": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Register trial company admin",
-                "description": "Register a trial company admin account.",
+                "tags": ["Auth"],
+                "summary": "Register trial company owner",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "company_name": {
-                                        "type": "string"
-                                    },
-                                    "company_username": {
-                                        "type": "string"
-                                    },
-                                    "email": {
-                                        "type": "string"
-                                    },
-                                    "password": {
-                                        "type": "string"
-                                    },
-                                    "confirm_password": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "email",
-                                    "password",
-                                    "confirm_password",
-                                    "company_name",
-                                    "company_username"
-                                ]
-                            }
+                            "schema": {"$ref": "#/components/schemas/RegisterRequest"}
                         }
                     }
                 },
                 "responses": {
                     "201": {
-                        "description": "Trial company admin registered",
+                        "description": "Registered successfully",
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/AuthResponse"
-                                }
+                                "schema": {"$ref": "#/components/schemas/ApiResponse_TokenResponse"}
                             }
                         }
                     },
-                    "409": {
-                        "description": "Registration failed: one or more fields already exist",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Registration failed: one or more fields already exist"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
+                    "409": {"$ref": "#/components/responses/Conflict"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
                 }
             }
         },
         "/auth/login": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Login",
-                "description": "Authenticate user and return token.",
+                "tags": ["Auth"],
+                "summary": "Login with email and password",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "email": {
-                                        "type": "string"
-                                    },
-                                    "password": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "email",
-                                    "password"
-                                ]
-                            }
+                            "schema": {"$ref": "#/components/schemas/LoginRequest"}
                         }
                     }
                 },
@@ -144,71 +81,24 @@
                         "description": "Login successful",
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/AuthResponse"
-                                }
+                                "schema": {"$ref": "#/components/schemas/ApiResponse_TokenResponse"}
                             }
                         }
                     },
-                    "401": {
-                        "description": "Invalid credentials",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid credentials"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
                 }
             }
         },
         "/auth/login/employee-code": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
+                "tags": ["Auth"],
                 "summary": "Login with employee code",
-                "description": "Authenticate user using employee code.",
                 "requestBody": {
                     "required": true,
                     "content": {
                         "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "company_username": {
-                                        "type": "string"
-                                    },
-                                    "employee_code": {
-                                        "type": "string"
-                                    },
-                                    "password": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "company_username",
-                                    "employee_code",
-                                    "password"
-                                ]
-                            }
+                            "schema": {"$ref": "#/components/schemas/LoginEmployeeCodeRequest"}
                         }
                     }
                 },
@@ -217,678 +107,1527 @@
                         "description": "Login successful",
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/AuthResponse"
-                                }
+                                "schema": {"$ref": "#/components/schemas/ApiResponse_TokenResponse"}
                             }
                         }
                     },
-                    "401": {
-                        "description": "Invalid credentials",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid credentials"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
                 }
             }
         },
         "/auth/login/oauth/google": {
             "get": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Login with Google OAuth",
-                "description": "Authenticate user using Google OAuth.",
+                "tags": ["Auth"],
+                "summary": "Start Google OAuth login",
                 "responses": {
-                    "200": {
-                        "description": "Login successful",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Login successful"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Invalid Google token",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid Google token"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    "302": {"description": "Redirect to Google OAuth consent"}
                 }
             }
         },
         "/auth/oauth/callback/google": {
             "get": {
-                "tags": [
-                    "Auth"
-                ],
+                "tags": ["Auth"],
                 "summary": "Google OAuth callback",
-                "description": "Callback endpoint for Google OAuth authentication.",
                 "parameters": [
-                    {
-                        "name": "code",
-                        "in": "query",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "Authorization code from Google"
-                    },
-                    {
-                        "name": "state",
-                        "in": "query",
-                        "required": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "description": "State parameter for CSRF protection"
-                    }
+                    {"name": "code","in": "query","required": true,"schema": {"type": "string"}},
+                    {"name": "state","in": "query","required": false,"schema": {"type": "string"}}
                 ],
                 "responses": {
                     "200": {
-                        "description": "OAuth callback successful",
+                        "description": "OAuth login successful",
                         "content": {
                             "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/AuthResponse"
-                                }
+                                "schema": {"$ref": "#/components/schemas/ApiResponse_TokenResponse"}
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid OAuth callback parameters",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid OAuth callback parameters"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Authentication failed",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Authentication failed"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    "400": {"$ref": "#/components/responses/BadRequest"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"}
                 }
             }
         },
         "/auth/refresh": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Refresh token",
-                "description": "Refresh authentication token.",
+                "tags": ["Auth"],
+                "summary": "Refresh access token",
                 "requestBody": {
                     "required": true,
                     "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "refresh_token": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "refresh_token"
-                                ]
-                            }
-                        }
+                        "application/json": {"schema": {"$ref": "#/components/schemas/RefreshTokenRequest"}}
                     }
                 },
                 "responses": {
                     "200": {
                         "description": "Token refreshed",
                         "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "access_token": {
-                                            "type": "string"
-                                        },
-                                        "access_token_expires_in": {
-                                            "type": "integer"
-                                        }
-                                    },
-                                    "required": [
-                                        "access_token",
-                                        "access_token_expires_in"
-                                    ]
-                                }
-                            }
+                            "application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_AccessTokenResponse"}}
                         }
                     },
-                    "401": {
-                        "description": "Invalid refresh token",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Refresh token is invalid or expired"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
                 }
             }
         },
         "/auth/logout": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Logout",
-                "description": "Logout user and invalidate token.",
+                "tags": ["Auth"],
+                "summary": "Logout current user",
+                "security": [{"BearerAuth": []}],
                 "responses": {
-                    "204": {
-                        "description": "Logout successful"
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Unauthorized"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    "200": {"description": "Logout successful"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"}
                 }
             }
         },
         "/auth/forgot-password": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Request password reset",
-                "description": "Request a password reset email.",
+                "tags": ["Auth"],
+                "summary": "Request password reset email",
                 "requestBody": {
                     "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "email": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "email"
-                                ]
-                            }
-                        }
-                    }
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ForgotPasswordRequest"}}}
                 },
                 "responses": {
-                    "200": {
-                        "description": "Password reset email sent",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Password reset email sent"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
+                    "200": {"description": "Reset email sent"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
                 }
             }
         },
         "/auth/verify-email": {
             "post": {
-                "tags": [
-                    "Auth"
-                ],
+                "tags": ["Auth"],
                 "summary": "Verify email with token",
-                "description": "Verify user email using a token.",
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyEmailRequest"}}}},
+                "responses": {
+                    "200": {"description": "Email verified"},
+                    "400": {"$ref": "#/components/responses/BadRequest"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            }
+        },
+        "/company": {
+            "post": {
+                "tags": ["Company"],
+                "summary": "Create company (pending user)",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateCompanyRequest"}}}},
+                "responses": {
+                    "201": {"description": "Company created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_CompanyResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            }
+        },
+        "/company/my": {
+            "get": {
+                "tags": ["Company"],
+                "summary": "Get my company profile",
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "200": {"description": "Company profile","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_CompanyResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "404": {"$ref": "#/components/responses/NotFound"}
+                }
+            },
+            "put": {
+                "tags": ["Company"],
+                "summary": "Update my company profile",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateCompanyRequest"}}}},
+                "responses": {
+                    "200": {"description": "Company updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_CompanyResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            },
+            "delete": {
+                "tags": ["Company"],
+                "summary": "Delete my company",
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "204": {"description": "Company deleted"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"}
+                }
+            }
+        },
+        "/leave/types": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "List leave types",
+                "security": [{"BearerAuth": []}],
+                "responses": {
+                    "200": {
+                        "description": "List of leave types",
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_LeaveTypeResponse"}}}
+                    }
+                }
+            },
+            "post": {
+                "tags": ["Leave"],
+                "summary": "Create leave type",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateLeaveTypeRequest"}}}},
+                "responses": {
+                    "201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_LeaveTypeResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            }
+        },
+        "/leave/types/{id}": {
+            "put": {
+                "tags": ["Leave"],
+                "summary": "Update leave type",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateLeaveTypeRequest"}}}},
+                "responses": {
+                    "200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_LeaveTypeResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            },
+            "delete": {
+                "tags": ["Leave"],
+                "summary": "Delete leave type",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {
+                    "204": {"description": "Deleted"},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "404": {"$ref": "#/components/responses/NotFound"}
+                }
+            }
+        },
+        "/leave/quota": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "List leave quotas",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "List quotas","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_LeaveQuotaResponse"}}}}}
+            },
+            "post": {
+                "tags": ["Leave"],
+                "summary": "(Reserved) Set quota manually",
+                "security": [{"BearerAuth": []}],
+                "deprecated": true,
+                "responses": {"501": {"description": "Not implemented"}}
+            }
+        },
+        "/leave/quota/adjust": {
+            "post": {
+                "tags": ["Leave"],
+                "summary": "Adjust leave quota",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/AdjustQuotaRequest"}}}},
+                "responses": {
+                    "200": {"description": "Quota adjusted","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_LeaveQuotaResponse"}}}},
+                    "401": {"$ref": "#/components/responses/Unauthorized"},
+                    "403": {"$ref": "#/components/responses/Forbidden"},
+                    "422": {"$ref": "#/components/responses/ValidationError"}
+                }
+            }
+        },
+        "/leave/quota/my": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "Get my leave quotas",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "My quotas","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_LeaveQuotaResponse"}}}}}
+            }
+        },
+        "/leave/quota/{id}": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "Get leave quota by ID",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Quota","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_LeaveQuotaResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            }
+        },
+        "/leave/requests": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "List leave requests (company)",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "filter","in": "query","required": false,"schema": {"$ref": "#/components/schemas/LeaveRequestFilter"}}],
+                "responses": {"200": {"description": "Paginated leave requests","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListLeaveRequestResponse"}}}}}
+            },
+            "post": {
+                "tags": ["Leave"],
+                "summary": "Create leave request",
+                "security": [{"BearerAuth": []}],
                 "requestBody": {
                     "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "token": {
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "token"
-                                ]
-                            }
-                        }
-                    }
+                    "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/CreateLeaveRequestRequest"}}}
                 },
-                "responses": {
-                    "200": {
-                        "description": "Email verified",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Email verified"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid token",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "message": {
-                                            "type": "string",
-                                            "example": "Invalid token or expired"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "422": {
-                        "description": "Validation error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/LeaveRequestResponse"}}}},"422": {"$ref": "#/components/responses/ValidationError"}}
             }
         },
-        "/companies": {
+        "/leave/requests/{id}": {
             "get": {
-                "tags": [
-                    "Companies"
-                ],
-                "summary": "List companies",
-                "responses": {
-                    "200": {
-                        "description": "List of companies"
-                    }
-                }
+                "tags": ["Leave"],
+                "summary": "Get leave request by ID",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Leave request","content": {"application/json": {"schema": {"$ref": "#/components/schemas/LeaveRequestResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            }
+        },
+        "/leave/requests/{id}/approve": {
+            "post": {
+                "tags": ["Leave"],
+                "summary": "Approve leave request",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": false,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApproveRequestRequest"}}}},
+                "responses": {"200": {"description": "Approved","content": {"application/json": {"schema": {"$ref": "#/components/schemas/LeaveRequestResponse"}}}},"403": {"$ref": "#/components/responses/Forbidden"}}
+            }
+        },
+        "/leave/requests/{id}/reject": {
+            "post": {
+                "tags": ["Leave"],
+                "summary": "Reject leave request",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/RejectRequestRequest"}}}},
+                "responses": {"200": {"description": "Rejected","content": {"application/json": {"schema": {"$ref": "#/components/schemas/LeaveRequestResponse"}}}}}
+            }
+        },
+        "/leave/requests/my": {
+            "get": {
+                "tags": ["Leave"],
+                "summary": "List my leave requests",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "filter","in": "query","required": false,"schema": {"$ref": "#/components/schemas/MyLeaveRequestFilter"}}],
+                "responses": {"200": {"description": "Paginated my requests","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListLeaveRequestResponse"}}}}}
+            }
+        },
+        "/master/branches": {
+            "get": {
+                "tags": ["Master"],
+                "summary": "List branches",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "Branches","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_BranchResponse"}}}}}
             },
             "post": {
-                "tags": [
-                    "Companies"
-                ],
-                "summary": "Create company",
-                "responses": {
-                    "201": {
-                        "description": "Company created"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Create branch",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateBranchRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_BranchResponse"}}}}}
             }
         },
-        "/companies/profile": {
+        "/master/branches/{id}": {
             "get": {
-            "tags": [
-                "Companies"
-            ],
-            "summary": "Get current company profile",
-            "description": "Retrieve the profile of the company associated with the authenticated user.",
-            "responses": {
-                "200": {
-                    "description": "Company profile details"
-                }
-            }
+                "tags": ["Master"],
+                "summary": "Get branch",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Branch","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_BranchResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
             },
             "put": {
-            "tags": [
-                "Companies"
-            ],
-            "summary": "Update company profile of authenticated user",
-            "description": "Update the profile of the company associated with the authenticated user.",
-            "responses": {
-                "200": {
-                    "description": "Company profile updated"
-                }
-            }
+                "tags": ["Master"],
+                "summary": "Update branch",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateBranchRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_BranchResponse"}}}}}
             },
             "delete": {
-            "tags": [
-                "Companies"
-            ],
-            "summary": "Delete company profile of authenticated user",
-            "description": "Delete the profile of the company associated with the authenticated user.",
-            "responses": {
-                "204": {
-                "description": "Company profile deleted"
-                }
-            }
+                "tags": ["Master"],
+                "summary": "Delete branch",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
             }
         },
-        "/users": {
+        "/master/grades": {
             "get": {
-                "tags": [
-                    "Users"
-                ],
-                "summary": "List users",
-                "responses": {
-                    "200": {
-                        "description": "List of users"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "List grades",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "Grades","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_GradeResponse"}}}}}
             },
             "post": {
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Create user",
-                "responses": {
-                    "201": {
-                        "description": "User created"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Create grade",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateGradeRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_GradeResponse"}}}}}
             }
         },
-        "/users/{id}": {
+        "/master/grades/{id}": {
             "get": {
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Get user by ID",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "User details"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Get grade",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Grade","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_GradeResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
             },
             "put": {
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Update user",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "User updated"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Update grade",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateGradeRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_GradeResponse"}}}}}
             },
             "delete": {
-                "tags": [
-                    "Users"
-                ],
-                "summary": "Delete user",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "User deleted"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Delete grade",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
             }
         },
-        "/employees": {
+        "/master/positions": {
             "get": {
-                "tags": [
-                    "Employees"
-                ],
-                "summary": "List employees",
-                "responses": {
-                    "200": {
-                        "description": "List of employees"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "List positions",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "Positions","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_Array_PositionResponse"}}}}}
             },
             "post": {
-                "tags": [
-                    "Employees"
-                ],
-                "summary": "Create employee",
-                "responses": {
-                    "201": {
-                        "description": "Employee created"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Create position",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreatePositionRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_PositionResponse"}}}}}
             }
         },
-        "/employees/{id}": {
+        "/master/positions/{id}": {
             "get": {
-                "tags": [
-                    "Employees"
-                ],
-                "summary": "Get employee by ID",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Employee details"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Get position",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Position","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_PositionResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
             },
             "put": {
-                "tags": [
-                    "Employees"
-                ],
-                "summary": "Update employee",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Employee updated"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Update position",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdatePositionRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiResponse_PositionResponse"}}}}}
             },
             "delete": {
-                "tags": [
-                    "Employees"
-                ],
-                "summary": "Delete employee",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "required": true,
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "204": {
-                        "description": "Employee deleted"
-                    }
-                }
+                "tags": ["Master"],
+                "summary": "Delete position",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/schedule": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "List work schedules",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "filter","in": "query","required": false,"schema": {"$ref": "#/components/schemas/WorkScheduleFilter"}}],
+                "responses": {"200": {"description": "Paginated schedules","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListWorkScheduleResponse"}}}}}
+            },
+            "post": {
+                "tags": ["Schedule"],
+                "summary": "Create work schedule",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateWorkScheduleRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleResponse"}}}}}
+            }
+        },
+        "/schedule/{id}": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get work schedule",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Schedule","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            },
+            "put": {
+                "tags": ["Schedule"],
+                "summary": "Update work schedule",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateWorkScheduleRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleResponse"}}}}}
+            },
+            "delete": {
+                "tags": ["Schedule"],
+                "summary": "Delete work schedule",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/schedule/times": {
+            "post": {
+                "tags": ["Schedule"],
+                "summary": "Create work schedule time",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateWorkScheduleTimeRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleTimeResponse"}}}}}
+            }
+        },
+        "/schedule/times/{id}": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get work schedule time",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Schedule time","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleTimeResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            },
+            "put": {
+                "tags": ["Schedule"],
+                "summary": "Update work schedule time",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateWorkScheduleTimeRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleTimeResponse"}}}}}
+            },
+            "delete": {
+                "tags": ["Schedule"],
+                "summary": "Delete work schedule time",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/schedule/locations": {
+            "post": {
+                "tags": ["Schedule"],
+                "summary": "Create work schedule location",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateWorkScheduleLocationRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleLocationResponse"}}}}}
+            }
+        },
+        "/schedule/locations/{id}": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get work schedule location",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Location","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleLocationResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            },
+            "put": {
+                "tags": ["Schedule"],
+                "summary": "Update work schedule location",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateWorkScheduleLocationRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/WorkScheduleLocationResponse"}}}}}
+            },
+            "delete": {
+                "tags": ["Schedule"],
+                "summary": "Delete work schedule location",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/employee-schedules": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "List employee schedule assignments",
+                "security": [{"BearerAuth": []}],
+                "responses": {"200": {"description": "Assignments list"}}
+            },
+            "post": {
+                "tags": ["Schedule"],
+                "summary": "Create employee schedule assignment",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateEmployeeScheduleAssignmentRequest"}}}},
+                "responses": {"201": {"description": "Created","content": {"application/json": {"schema": {"$ref": "#/components/schemas/EmployeeScheduleAssignmentResponse"}}}}}
+            }
+        },
+        "/employee-schedules/{id}": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get employee schedule assignment",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Assignment","content": {"application/json": {"schema": {"$ref": "#/components/schemas/EmployeeScheduleAssignmentResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            },
+            "put": {
+                "tags": ["Schedule"],
+                "summary": "Update employee schedule assignment",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateEmployeeScheduleAssignmentRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/EmployeeScheduleAssignmentResponse"}}}}}
+            },
+            "delete": {
+                "tags": ["Schedule"],
+                "summary": "Delete employee schedule assignment",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/schedule/employee/{id}": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get employee schedule timeline",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Timeline","content": {"application/json": {"schema": {"$ref": "#/components/schemas/EmployeeScheduleTimelineResponse"}}}}}
+            }
+        },
+        "/schedule/employee/{employeeID}/active": {
+            "get": {
+                "tags": ["Schedule"],
+                "summary": "Get active schedule for employee",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "employeeID","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Active schedule","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ActiveSchedule"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            }
+        },
+        "/attendance": {
+            "get": {
+                "tags": ["Attendance"],
+                "summary": "List attendance records",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "filter","in": "query","required": false,"schema": {"$ref": "#/components/schemas/AttendanceFilter"}}],
+                "responses": {"200": {"description": "Paginated attendance","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListAttendanceResponse"}}}}}
+            }
+        },
+        "/attendance/{id}": {
+            "get": {
+                "tags": ["Attendance"],
+                "summary": "Get attendance by ID",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"200": {"description": "Attendance","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}},"404": {"$ref": "#/components/responses/NotFound"}}
+            },
+            "put": {
+                "tags": ["Attendance"],
+                "summary": "Update attendance record",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpdateAttendanceRequest"}}}},
+                "responses": {"200": {"description": "Updated","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}}}
+            },
+            "delete": {
+                "tags": ["Attendance"],
+                "summary": "Delete attendance record",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "responses": {"204": {"description": "Deleted"}}
+            }
+        },
+        "/attendance/{id}/approve": {
+            "post": {
+                "tags": ["Attendance"],
+                "summary": "Approve attendance",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": false,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApproveAttendanceRequest"}}}},
+                "responses": {"200": {"description": "Approved","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}}}
+            }
+        },
+        "/attendance/{id}/reject": {
+            "post": {
+                "tags": ["Attendance"],
+                "summary": "Reject attendance",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "id","in": "path","required": true,"schema": {"type": "string","format": "uuid"}}],
+                "requestBody": {"required": true,"content": {"application/json": {"schema": {"$ref": "#/components/schemas/RejectAttendanceRequest"}}}},
+                "responses": {"200": {"description": "Rejected","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}}}
+            }
+        },
+        "/attendance/my": {
+            "get": {
+                "tags": ["Attendance"],
+                "summary": "Get my attendance records",
+                "security": [{"BearerAuth": []}],
+                "parameters": [{"name": "filter","in": "query","required": false,"schema": {"$ref": "#/components/schemas/MyAttendanceFilter"}}],
+                "responses": {"200": {"description": "My attendance","content": {"application/json": {"schema": {"$ref": "#/components/schemas/ListAttendanceResponse"}}}}}
+            }
+        },
+        "/attendance/clock-in": {
+            "post": {
+                "tags": ["Attendance"],
+                "summary": "Clock-in",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ClockInRequest"}}}},
+                "responses": {"201": {"description": "Clocked in","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}},"422": {"$ref": "#/components/responses/ValidationError"}}
+            }
+        },
+        "/attendance/clock-out": {
+            "post": {
+                "tags": ["Attendance"],
+                "summary": "Clock-out",
+                "security": [{"BearerAuth": []}],
+                "requestBody": {"required": true,"content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/ClockOutRequest"}}}},
+                "responses": {"200": {"description": "Clocked out","content": {"application/json": {"schema": {"$ref": "#/components/schemas/AttendanceResponse"}}}},"422": {"$ref": "#/components/responses/ValidationError"}}
             }
         }
     },
     "components": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+                "description": "JWT access token in the Authorization header"
+            }
+        },
         "schemas": {
-            "AuthResponse": {
+            "ResponseEnvelope": {
                 "type": "object",
                 "properties": {
-                    "access_token": {
-                        "type": "string"
-                    },
-                    "access_token_expires_in": {
-                        "type": "integer"
-                    },
-                    "refresh_token": {
-                        "type": "string"
-                    },
-                    "refresh_token_expires_in": {
-                        "type": "integer"
+                    "success": {"type": "boolean"},
+                    "message": {"type": "string"},
+                    "data": {"type": ["object", "null"]},
+                    "error": {"$ref": "#/components/schemas/ErrorDetail"},
+                    "meta": {"$ref": "#/components/schemas/Meta"}
+                }
+            },
+            "ApiResponse_TokenResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/TokenResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_AccessTokenResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/AccessTokenResponse"}
+                        }
+                    }
+                ]
+            },
+            "ErrorDetail": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string"},
+                    "message": {"type": "string"},
+                    "details": {
+                        "type": "object",
+                        "additionalProperties": {"type": "string"}
                     }
                 }
             },
-            "ValidationError": {
+            "Meta": {
                 "type": "object",
                 "properties": {
-                    "success": {
-                        "type": "boolean",
-                        "example": false
-                    },
-                    "error": {
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "total_items": {"type": "integer","format": "int64"},
+                    "total_pages": {"type": "integer"}
+                }
+            },
+            "RegisterRequest": {
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string"},
+                    "company_username": {"type": "string"},
+                    "email": {"type": "string","format": "email"},
+                    "password": {"type": "string","format": "password"},
+                    "confirm_password": {"type": "string","format": "password"}
+                },
+                "required": ["company_name","company_username","email","password","confirm_password"]
+            },
+            "LoginRequest": {
+                "type": "object",
+                "properties": {
+                    "email": {"type": "string","format": "email"},
+                    "password": {"type": "string","format": "password"}
+                },
+                "required": ["email","password"]
+            },
+            "LoginEmployeeCodeRequest": {
+                "type": "object",
+                "properties": {
+                    "company_username": {"type": "string"},
+                    "employee_code": {"type": "string"},
+                    "password": {"type": "string","format": "password"}
+                },
+                "required": ["company_username","employee_code","password"]
+            },
+            "TokenResponse": {
+                "type": "object",
+                "properties": {
+                    "access_token": {"type": "string"},
+                    "access_token_expires_in": {"type": "integer"},
+                    "refresh_token": {"type": "string"},
+                    "refresh_token_expires_in": {"type": "integer"}
+                }
+            },
+            "AccessTokenResponse": {
+                "type": "object",
+                "properties": {
+                    "access_token": {"type": "string"},
+                    "access_token_expires_in": {"type": "integer"}
+                }
+            },
+            "RefreshTokenRequest": {
+                "type": "object",
+                "properties": {"refresh_token": {"type": "string"}},
+                "required": ["refresh_token"]
+            },
+            "ForgotPasswordRequest": {
+                "type": "object",
+                "properties": {"email": {"type": "string","format": "email"}},
+                "required": ["email"]
+            },
+            "VerifyEmailRequest": {
+                "type": "object",
+                "properties": {"token": {"type": "string"}},
+                "required": ["token"]
+            },
+            "CompanyResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "username": {"type": "string"},
+                    "logo_url": {"type": ["string","null"],"format": "uri"},
+                    "timezone": {"type": "string"}
+                }
+            },
+            "ApiResponse_CompanyResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
                         "type": "object",
                         "properties": {
-                            "code": {
-                                "type": "string",
-                                "example": "VALIDATION_ERROR"
-                            },
-                            "message": {
-                                "type": "string",
-                                "example": "Validation failed"
-                            },
-                            "details": {
-                                "type": "object",
-                                "additionalProperties": {
-                                    "type": "string"
-                                },
-                                "description": "Field-specific validation error messages"
+                            "data": {"$ref": "#/components/schemas/CompanyResponse"}
+                        }
+                    }
+                ]
+            },
+            "CreateCompanyRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "username": {"type": "string"},
+                    "timezone": {"type": "string"}
+                },
+                "required": ["name","username","timezone"]
+            },
+            "UpdateCompanyRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "timezone": {"type": "string"},
+                    "logo_url": {"type": "string","format": "uri"}
+                }
+            },
+            "CreateLeaveTypeRequest": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "code": {"type": ["string","null"]},
+                    "description": {"type": ["string","null"]},
+                    "color": {"type": ["string","null"]},
+                    "is_active": {"type": ["boolean","null"]},
+                    "requires_approval": {"type": ["boolean","null"]},
+                    "requires_attachment": {"type": ["boolean","null"]},
+                    "attachment_required_after_days": {"type": ["integer","null"]},
+                    "has_quota": {"type": ["boolean","null"]},
+                    "accrual_method": {"type": ["string","null"]},
+                    "deduction_type": {"type": ["string","null"]},
+                    "allow_half_day": {"type": ["boolean","null"]},
+                    "max_days_per_request": {"type": ["integer","null"]},
+                    "min_notice_days": {"type": ["integer","null"]},
+                    "max_advance_days": {"type": ["integer","null"]},
+                    "allow_backdate": {"type": ["boolean","null"]},
+                    "backdate_max_days": {"type": ["integer","null"]},
+                    "allow_rollover": {"type": ["boolean","null"]},
+                    "max_rollover_days": {"type": ["integer","null"]},
+                    "rollover_expiry_month": {"type": ["integer","null"]},
+                    "quota_calculation_type": {"type": "string"},
+                    "quota_rules": {"type": "object"}
+                },
+                "required": ["name","quota_calculation_type","quota_rules"]
+            },
+            "LeaveTypeResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "company_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "code": {"type": ["string","null"]},
+                    "description": {"type": ["string","null"]},
+                    "color": {"type": ["string","null"]},
+                    "is_active": {"type": ["boolean","null"]},
+                    "requires_approval": {"type": ["boolean","null"]},
+                    "has_quota": {"type": ["boolean","null"]},
+                    "accrual_method": {"type": ["string","null"]},
+                    "quota_calculation_type": {"type": "string"},
+                    "quota_rules": {"type": "object"}
+                }
+            },
+            "ApiResponse_LeaveTypeResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/LeaveTypeResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_Array_LeaveTypeResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/LeaveTypeResponse"}
                             }
                         }
                     }
+                ]
+            },
+            "UpdateLeaveTypeRequest": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "name": {"type": ["string","null"]},
+                    "code": {"type": ["string","null"]},
+                    "description": {"type": ["string","null"]},
+                    "color": {"type": ["string","null"]},
+                    "is_active": {"type": ["boolean","null"]},
+                    "requires_approval": {"type": ["boolean","null"]},
+                    "requires_attachment": {"type": ["boolean","null"]},
+                    "attachment_required_after_days": {"type": ["integer","null"]},
+                    "has_quota": {"type": ["boolean","null"]},
+                    "accrual_method": {"type": ["string","null"]},
+                    "deduction_type": {"type": ["string","null"]},
+                    "allow_half_day": {"type": ["boolean","null"]},
+                    "max_days_per_request": {"type": ["integer","null"]},
+                    "min_notice_days": {"type": ["integer","null"]},
+                    "max_advance_days": {"type": ["integer","null"]},
+                    "allow_backdate": {"type": ["boolean","null"]},
+                    "backdate_max_days": {"type": ["integer","null"]},
+                    "allow_rollover": {"type": ["boolean","null"]},
+                    "max_rollover_days": {"type": ["integer","null"]},
+                    "rollover_expiry_month": {"type": ["integer","null"]},
+                    "quota_calculation_type": {"type": ["string","null"]},
+                    "quota_rules": {"type": ["object","null"]}
+                },
+                "required": ["id"]
+            },
+            "LeaveRequestFilter": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": ["string","null"]},
+                    "employee_name": {"type": ["string","null"]},
+                    "leave_type_id": {"type": ["string","null"]},
+                    "status": {"type": ["string","null"]},
+                    "start_date": {"type": ["string","null"],"format": "date"},
+                    "end_date": {"type": ["string","null"],"format": "date"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "sort_by": {"type": "string"},
+                    "sort_order": {"type": "string"}
                 }
+            },
+            "MyLeaveRequestFilter": {
+                "type": "object",
+                "properties": {
+                    "leave_type_id": {"type": ["string","null"]},
+                    "status": {"type": ["string","null"]},
+                    "start_date": {"type": ["string","null"],"format": "date"},
+                    "end_date": {"type": ["string","null"],"format": "date"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "sort_by": {"type": "string"},
+                    "sort_order": {"type": "string"}
+                }
+            },
+            "LeaveRequestResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "employee_id": {"type": "string"},
+                    "employee_name": {"type": "string"},
+                    "leave_type_id": {"type": "string"},
+                    "leave_type_name": {"type": "string"},
+                    "start_date": {"type": "string","format": "date"},
+                    "end_date": {"type": "string","format": "date"},
+                    "duration_type": {"type": "string"},
+                    "total_days": {"type": "number"},
+                    "working_days": {"type": "number"},
+                    "reason": {"type": "string"},
+                    "attachment_url": {"type": ["string","null"],"format": "uri"},
+                    "status": {"type": "string"},
+                    "submitted_at": {"type": "string","format": "date-time"},
+                    "approved_by": {"type": ["string","null"]},
+                    "approved_at": {"type": ["string","null"],"format": "date-time"},
+                    "rejection_reason": {"type": ["string","null"]}
+                }
+            },
+            "ListLeaveRequestResponse": {
+                "type": "object",
+                "properties": {
+                    "total_count": {"type": "integer","format": "int64"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "total_pages": {"type": "integer"},
+                    "showing": {"type": "string"},
+                    "requests": {"type": "array","items": {"$ref": "#/components/schemas/LeaveRequestResponse"}}
+                }
+            },
+            "CreateLeaveRequestRequest": {
+                "type": "object",
+                "properties": {
+                    "leave_type_id": {"type": "string","format": "uuid"},
+                    "start_date": {"type": "string","format": "date"},
+                    "end_date": {"type": "string","format": "date"},
+                    "duration_type": {"type": "string","enum": ["full_day","half_day_morning","half_day_afternoon"]},
+                    "reason": {"type": "string","minLength": 10},
+                    "attachment": {"type": "string","format": "binary"}
+                },
+                "required": ["leave_type_id","start_date","end_date","reason"]
+            },
+            "LeaveQuotaResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "employee_id": {"type": "string"},
+                    "employee_name": {"type": "string"},
+                    "leave_type_id": {"type": "string"},
+                    "leave_type_name": {"type": "string"},
+                    "year": {"type": "integer"},
+                    "opening_balance": {"type": "integer"},
+                    "earned_quota": {"type": "integer"},
+                    "rollover_quota": {"type": "integer"},
+                    "adjustment_quota": {"type": "integer"},
+                    "used_quota": {"type": "number"},
+                    "pending_quota": {"type": "number"},
+                    "available_quota": {"type": "number"}
+                }
+            },
+            "ApiResponse_LeaveQuotaResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/LeaveQuotaResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_Array_LeaveQuotaResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/LeaveQuotaResponse"}
+                            }
+                        }
+                    }
+                ]
+            },
+            "AdjustQuotaRequest": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "string"},
+                    "leave_type_id": {"type": "string"},
+                    "year": {"type": "integer"},
+                    "adjustment": {"type": "integer"},
+                    "reason": {"type": "string"}
+                },
+                "required": ["employee_id","leave_type_id","adjustment","reason"]
+            },
+            "ApproveRequestRequest": {
+                "type": "object",
+                "properties": {"request_id": {"type": "string"},"reason": {"type": ["string","null"]}},
+                "required": ["request_id"]
+            },
+            "RejectRequestRequest": {
+                "type": "object",
+                "properties": {"request_id": {"type": "string"},"reason": {"type": ["string","null"]}},
+                "required": ["request_id"]
+            },
+            "BranchResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "company_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "address": {"type": ["string","null"]},
+                    "timezone": {"type": "string"}
+                }
+            },
+            "ApiResponse_BranchResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/BranchResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_Array_BranchResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/BranchResponse"}
+                            }
+                        }
+                    }
+                ]
+            },
+            "CreateBranchRequest": {
+                "type": "object",
+                "properties": {"company_id": {"type": "string"},"name": {"type": "string"},"address": {"type": ["string","null"]}},
+                "required": ["company_id","name"]
+            },
+            "UpdateBranchRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": ["string","null"]},"address": {"type": ["string","null"]},"timezone": {"type": ["string","null"]}},
+                "required": ["id"]
+            },
+            "CreateGradeRequest": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"]
+            },
+            "UpdateGradeRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": "string"}},
+                "required": ["id","name"]
+            },
+            "GradeResponse": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": "string"}}
+            },
+            "ApiResponse_GradeResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/GradeResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_Array_GradeResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/GradeResponse"}
+                            }
+                        }
+                    }
+                ]
+            },
+            "CreatePositionRequest": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}},
+                "required": ["name"]
+            },
+            "UpdatePositionRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": "string"}},
+                "required": ["id","name"]
+            },
+            "PositionResponse": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"company_id": {"type": "string"},"name": {"type": "string"}}
+            },
+            "ApiResponse_PositionResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {"$ref": "#/components/schemas/PositionResponse"}
+                        }
+                    }
+                ]
+            },
+            "ApiResponse_Array_PositionResponse": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/ResponseEnvelope"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "data": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/PositionResponse"}
+                            }
+                        }
+                    }
+                ]
+            },
+            "CreateWorkScheduleRequest": {
+                "type": "object",
+                "properties": {"name": {"type": "string"},"type": {"type": "string"},"grace_period_minutes": {"type": "integer"}},
+                "required": ["name","type","grace_period_minutes"]
+            },
+            "WorkScheduleResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "company_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "type": {"type": "string"},
+                    "grace_period_minutes": {"type": "integer"},
+                    "times": {"type": "array","items": {"$ref": "#/components/schemas/WorkScheduleTimeResponse"}},
+                    "locations": {"type": "array","items": {"$ref": "#/components/schemas/WorkScheduleLocationResponse"}},
+                    "created_at": {"type": "string"},
+                    "updated_at": {"type": "string"},
+                    "deleted_at": {"type": ["string","null"]}
+                }
+            },
+            "ListWorkScheduleResponse": {
+                "type": "object",
+                "properties": {
+                    "total_count": {"type": "integer","format": "int64"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "total_pages": {"type": "integer"},
+                    "showing": {"type": "string"},
+                    "work_schedules": {"type": "array","items": {"$ref": "#/components/schemas/WorkScheduleResponse"}}
+                }
+            },
+            "WorkScheduleFilter": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": ["string","null"]},
+                    "type": {"type": ["string","null"]},
+                    "company_id": {"type": ["string","null"]},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "sort_by": {"type": "string"},
+                    "sort_order": {"type": "string"}
+                }
+            },
+            "CreateWorkScheduleTimeRequest": {
+                "type": "object",
+                "properties": {
+                    "work_schedule_id": {"type": "string"},
+                    "day_of_week": {"type": "integer"},
+                    "clock_in_time": {"type": "string"},
+                    "break_start_time": {"type": ["string","null"]},
+                    "break_end_time": {"type": ["string","null"]},
+                    "clock_out_time": {"type": "string"},
+                    "is_next_day_checkout": {"type": "boolean"},
+                    "location_type": {"type": "string"}
+                },
+                "required": ["work_schedule_id","day_of_week","clock_in_time","clock_out_time","is_next_day_checkout","location_type"]
+            },
+            "WorkScheduleTimeResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "work_schedule_id": {"type": "string"},
+                    "day_of_week": {"type": "integer"},
+                    "day_name": {"type": "string"},
+                    "clock_in_time": {"type": "string"},
+                    "break_start_time": {"type": ["string","null"]},
+                    "break_end_time": {"type": ["string","null"]},
+                    "clock_out_time": {"type": "string"},
+                    "is_next_day_checkout": {"type": "boolean"},
+                    "location_type": {"type": "string"},
+                    "created_at": {"type": "string"},
+                    "updated_at": {"type": "string"}
+                }
+            },
+            "CreateWorkScheduleLocationRequest": {
+                "type": "object",
+                "properties": {
+                    "work_schedule_id": {"type": "string"},
+                    "location_name": {"type": "string"},
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "radius_meters": {"type": "integer"}
+                },
+                "required": ["work_schedule_id","location_name","latitude","longitude","radius_meters"]
+            },
+            "WorkScheduleLocationResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "work_schedule_id": {"type": "string"},
+                    "location_name": {"type": "string"},
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "radius_meters": {"type": "integer"},
+                    "created_at": {"type": "string"},
+                    "updated_at": {"type": "string"}
+                }
+            },
+            "CreateEmployeeScheduleAssignmentRequest": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "string"},
+                    "work_schedule_id": {"type": "string"},
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": ["string","null"]}
+                },
+                "required": ["employee_id","work_schedule_id","start_date"]
+            },
+            "EmployeeScheduleAssignmentResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "employee_id": {"type": "string"},
+                    "work_schedule_id": {"type": "string"},
+                    "start_date": {"type": "string"},
+                    "end_date": {"type": "string"},
+                    "created_at": {"type": "string"},
+                    "updated_at": {"type": "string"}
+                }
+            },
+            "UpdateWorkScheduleRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": ["string","null"]},"type": {"type": ["string","null"]},"grace_period_minutes": {"type": ["integer","null"]}},
+                "required": ["id"]
+            },
+            "UpdateWorkScheduleTimeRequest": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "day_of_week": {"type": ["integer","null"]},
+                    "clock_in_time": {"type": "string"},
+                    "clock_out_time": {"type": "string"},
+                    "is_next_day_checkout": {"type": "boolean"},
+                    "break_start_time": {"type": ["string","null"]},
+                    "break_end_time": {"type": ["string","null"]},
+                    "location_type": {"type": "string"}
+                },
+                "required": ["id","clock_in_time","clock_out_time","is_next_day_checkout","location_type"]
+            },
+            "UpdateWorkScheduleLocationRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"location_name": {"type": ["string","null"]},"latitude": {"type": ["number","null"]},"longitude": {"type": ["number","null"]},"radius_meters": {"type": ["integer","null"]}},
+                "required": ["id"]
+            },
+            "UpdateEmployeeScheduleAssignmentRequest": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"employee_id": {"type": "string"},"work_schedule_id": {"type": "string"},"start_date": {"type": "string"},"end_date": {"type": "string"}},
+                "required": ["id","employee_id","work_schedule_id","start_date","end_date"]
+            },
+            "AssignScheduleRequest": {
+                "type": "object",
+                "properties": {"work_schedule_id": {"type": "string"},"employee_id": {"type": "string"},"start_date": {"type": "string"},"end_date": {"type": ["string","null"]}},
+                "required": ["work_schedule_id","employee_id","start_date"]
+            },
+            "AssignScheduleResponse": {
+                "type": "object",
+                "properties": {"employee_schedule_assignment_id": {"type": ["string","null"]},"work_schedule_id": {"type": "string"},"employee_id": {"type": "string"},"start_date": {"type": ["string","null"]},"end_date": {"type": ["string","null"]},"created_at": {"type": ["string","null"]},"updated_at": {"type": ["string","null"]}}
+            },
+            "EmployeeScheduleTimelineFilter": {
+                "type": "object",
+                "properties": {"page": {"type": "integer"},"limit": {"type": "integer"}}
+            },
+            "EmployeeScheduleTimelineResponse": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "string"},
+                    "employee_name": {"type": "string"},
+                    "total_count": {"type": "integer","format": "int64"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "total_pages": {"type": "integer"},
+                    "showing": {"type": "string"},
+                    "timeline": {"type": "array","items": {"$ref": "#/components/schemas/EmployeeScheduleTimelineItem"}}
+                }
+            },
+            "EmployeeScheduleTimelineItem": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": ["string","null"]},
+                    "type": {"type": "string"},
+                    "status": {"type": "string"},
+                    "date_range": {"$ref": "#/components/schemas/ScheduleDateRange"},
+                    "schedule_snapshot": {"$ref": "#/components/schemas/ScheduleSnapshot"},
+                    "is_active_today": {"type": "boolean"},
+                    "actions": {"$ref": "#/components/schemas/ScheduleActions"}
+                }
+            },
+            "ScheduleDateRange": {
+                "type": "object",
+                "properties": {"start": {"type": ["string","null"]},"end": {"type": ["string","null"]}}
+            },
+            "ScheduleSnapshot": {
+                "type": "object",
+                "properties": {"id": {"type": "string"},"name": {"type": "string"},"type": {"type": "string"},"grace_period_minutes": {"type": "integer"}}
+            },
+            "ScheduleActions": {
+                "type": "object",
+                "properties": {"can_edit": {"type": "boolean"},"can_delete": {"type": "boolean"},"can_replace": {"type": ["boolean","null"]}}
+            },
+            "ScheduleLocation": {
+                "type": "object",
+                "properties": {"name": {"type": "string"},"latitude": {"type": "number"},"longitude": {"type": "number"},"radius_meters": {"type": "integer"}}
+            },
+            "ActiveSchedule": {
+                "type": "object",
+                "properties": {
+                    "schedule_id": {"type": "string"},
+                    "schedule_name": {"type": "string"},
+                    "location_type": {"type": "string"},
+                    "grace_period_minutes": {"type": "integer"},
+                    "time_id": {"type": "string"},
+                    "clock_in": {"type": "string","format": "date-time"},
+                    "clock_out": {"type": "string","format": "date-time"},
+                    "is_next_day_checkout": {"type": "boolean"},
+                    "locations": {"type": "array","items": {"$ref": "#/components/schemas/ScheduleLocation"}}
+                }
+            },
+            "AttendanceFilter": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": ["string","null"]},
+                    "date": {"type": ["string","null"],"format": "date"},
+                    "status": {"type": ["string","null"]},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "sort_by": {"type": "string"},
+                    "sort_order": {"type": "string"}
+                }
+            },
+            "MyAttendanceFilter": {
+                "type": "object",
+                "properties": {"start_date": {"type": ["string","null"],"format": "date"},"end_date": {"type": ["string","null"],"format": "date"},"page": {"type": "integer"},"limit": {"type": "integer"}}
+            },
+            "AttendanceResponse": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "employee_id": {"type": "string"},
+                    "employee_name": {"type": "string"},
+                    "date": {"type": "string","format": "date"},
+                    "clock_in": {"type": ["string","null"],"format": "date-time"},
+                    "clock_out": {"type": ["string","null"],"format": "date-time"},
+                    "status": {"type": "string"},
+                    "late_minutes": {"type": ["integer","null"]},
+                    "overtime_minutes": {"type": ["integer","null"]},
+                    "work_schedule_id": {"type": ["string","null"]},
+                    "work_schedule_time_id": {"type": ["string","null"]},
+                    "location_type": {"type": ["string","null"]},
+                    "clock_in_latitude": {"type": ["number","null"]},
+                    "clock_in_longitude": {"type": ["number","null"]},
+                    "clock_in_distance_meters": {"type": ["number","null"]},
+                    "clock_in_photo_url": {"type": ["string","null"],"format": "uri"},
+                    "clock_out_latitude": {"type": ["number","null"]},
+                    "clock_out_longitude": {"type": ["number","null"]},
+                    "clock_out_distance_meters": {"type": ["number","null"]},
+                    "clock_out_photo_url": {"type": ["string","null"],"format": "uri"},
+                    "approved_by": {"type": ["string","null"]},
+                    "approved_at": {"type": ["string","null"],"format": "date-time"},
+                    "rejection_reason": {"type": ["string","null"]}
+                }
+            },
+            "ListAttendanceResponse": {
+                "type": "object",
+                "properties": {
+                    "total_count": {"type": "integer","format": "int64"},
+                    "page": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                    "total_pages": {"type": "integer"},
+                    "showing": {"type": "string"},
+                    "attendances": {"type": "array","items": {"$ref": "#/components/schemas/AttendanceResponse"}}
+                }
+            },
+            "UpdateAttendanceRequest": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": ["string","null"]},
+                    "clock_in": {"type": ["string","null"],"format": "date-time"},
+                    "clock_out": {"type": ["string","null"],"format": "date-time"},
+                    "late_minutes": {"type": ["integer","null"]},
+                    "overtime_minutes": {"type": ["integer","null"]}
+                }
+            },
+            "ApproveAttendanceRequest": {
+                "type": "object",
+                "properties": {"reason": {"type": ["string","null"]}}
+            },
+            "RejectAttendanceRequest": {
+                "type": "object",
+                "properties": {"reason": {"type": "string"}},
+                "required": ["reason"]
+            },
+            "ClockInRequest": {
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "photo": {"type": "string","format": "binary"}
+                },
+                "required": ["latitude","longitude","photo"]
+            },
+            "ClockOutRequest": {
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number"},
+                    "longitude": {"type": "number"},
+                    "photo": {"type": "string","format": "binary"}
+                },
+                "required": ["latitude","longitude","photo"]
+            }
+        },
+        "responses": {
+            "BadRequest": {
+                "description": "Bad request",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "Unauthorized": {
+                "description": "Unauthorized",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "Forbidden": {
+                "description": "Forbidden",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "NotFound": {
+                "description": "Resource not found",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "Conflict": {
+                "description": "Conflict",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "ValidationError": {
+                "description": "Validation failed",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
+            },
+            "InternalServerError": {
+                "description": "Internal server error",
+                "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ResponseEnvelope"}}}
             }
         }
     }

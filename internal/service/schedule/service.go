@@ -56,7 +56,9 @@ func (s *scheduleServiceImpl) AssignSchedule(ctx context.Context, req schedule.A
 
 			startDate, _ := time.Parse("2006-01-02", req.StartDate)
 			if err := s.employeeScheduleAssignRepo.DeleteFutureAssignments(txCtx, startDate, req.EmployeeID, companyID); err != nil {
-				return fmt.Errorf("failed to delete future assignments: %w", err)
+				if !errors.Is(err, pgx.ErrNoRows) {
+					return fmt.Errorf("failed to delete future assignments: %w", err)
+				}
 			}
 			return nil
 		})
@@ -210,7 +212,7 @@ func (s *scheduleServiceImpl) CreateWorkScheduleLocation(ctx context.Context, re
 		return schedule.WorkScheduleLocationResponse{}, fmt.Errorf("failed to get work schedule: %w", err)
 	}
 	// Can only insert work schedule information if work schedule type is WFO
-	if ws.Type != schedule.WorkArrangementWFO {
+	if ws.Type != schedule.WorkArrangementWFO && ws.Type != schedule.WorkArrangementHybrid {
 		return schedule.WorkScheduleLocationResponse{}, schedule.ErrInvalidWorkScheduleType
 	}
 

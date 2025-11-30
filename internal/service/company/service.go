@@ -257,7 +257,13 @@ func (c *CompanyServiceImpl) seedDefaultData(ctx context.Context, companyID stri
 
 // Delete implements company.CompanyService.
 func (c *CompanyServiceImpl) Delete(ctx context.Context, id string) error {
-	panic("unimplemented")
+	if err := c.CompanyRepository.Delete(ctx, id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return company.ErrCompanyNotFound
+		}
+		return fmt.Errorf("failed to delete company with id %s: %w", id, err)
+	}
+	return nil
 }
 
 // GetByID implements company.CompanyService.

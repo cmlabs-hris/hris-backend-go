@@ -211,6 +211,8 @@ func HandleError(w http.ResponseWriter, err error) {
 		NotFound(w, "Branches not found")
 	case errors.Is(err, branch.ErrUnauthorizedAccess):
 		Forbidden(w, "Unauthorized access to branch")
+	case errors.Is(err, branch.ErrInvalidTimezone):
+		BadRequest(w, "Invalid timezone", nil)
 
 	// Master data - Grade domain errors
 	case errors.Is(err, grade.ErrGradeNotFound):
@@ -255,7 +257,7 @@ func HandleError(w http.ResponseWriter, err error) {
 	case errors.Is(err, schedule.ErrWorkScheduleTimeExists):
 		Conflict(w, "Work schedule time already exists")
 	case errors.Is(err, schedule.ErrInvalidWorkScheduleType):
-		BadRequest(w, "Work schedule type must be 'WFO'", nil)
+		BadRequest(w, "Work schedule type must be 'WFO' or 'Hybrid'", nil)
 	case errors.Is(err, schedule.ErrEmployeeScheduleTimelineNotFound):
 		NotFound(w, "Employee schedule timeline not found")
 	case errors.Is(err, schedule.ErrMismatchedLocationType):

@@ -44,10 +44,18 @@ func (r *ClockInRequest) Validate() error {
 		})
 	}
 
+	filename := r.FileHeader.Filename
+	ext := strings.ToLower(filename[strings.LastIndex(filename, "."):])
 	if r.FileHeader == nil {
 		errs = append(errs, validator.ValidationError{
 			Field:   "file",
 			Message: "attendance proof photo is required",
+		})
+	} else if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		// Validate image format
+		errs = append(errs, validator.ValidationError{
+			Field:   "file",
+			Message: "invalid file type: only jpg, jpeg, png allowed",
 		})
 	} else if r.FileHeader.Size > 10<<20 { // 10MB
 		errs = append(errs, validator.ValidationError{
@@ -96,10 +104,18 @@ func (r *ClockOutRequest) Validate() error {
 		})
 	}
 
+	filename := r.FileHeader.Filename
+	ext := strings.ToLower(filename[strings.LastIndex(filename, "."):])
 	if r.FileHeader == nil {
 		errs = append(errs, validator.ValidationError{
 			Field:   "file",
 			Message: "attendance proof photo is required",
+		})
+	} else if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		// Validate image format
+		errs = append(errs, validator.ValidationError{
+			Field:   "file",
+			Message: "invalid file type: only jpg, jpeg, png allowed",
 		})
 	} else if r.FileHeader.Size > 10<<20 { // 10MB
 		errs = append(errs, validator.ValidationError{

@@ -16,7 +16,7 @@ var (
 
 	// Work Schedule Location Errors
 	ErrWorkScheduleLocationNotFound = errors.New("work schedule location not found")
-	ErrInvalidWorkScheduleType      = errors.New("work schedule type must be 'WFO' or match the required location type")
+	ErrInvalidWorkScheduleType      = errors.New("work schedule type must be 'WFO' 'Hybrid' or match the required location type")
 
 	// Employee Schedule Assignment Errors
 	ErrEmployeeScheduleAssignmentNotFound = errors.New("employee schedule assignment not found")

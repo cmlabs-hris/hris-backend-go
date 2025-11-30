@@ -8,10 +8,35 @@ import (
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/jackc/pgx/v5"
 )
 
 type companyRepositoryImpl struct {
 	db *database.DB
+}
+
+// Delete implements company.CompanyRepository.
+func (c *companyRepositoryImpl) Delete(ctx context.Context, id string) error {
+	q := GetQuerier(ctx, c.db)
+
+	query := `
+		UPDATE companies
+		SET deleted_at = $1
+		WHERE id = $2
+	`
+
+	now := time.Now()
+	result, err := q.Exec(ctx, query, now, id)
+	if err != nil {
+		return fmt.Errorf("failed to soft delete company with id %s: %w", id, err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("no company found with id %s, %w", id, pgx.ErrNoRows)
+	}
+
+	return nil
 }
 
 // Update implements company.CompanyRepository.

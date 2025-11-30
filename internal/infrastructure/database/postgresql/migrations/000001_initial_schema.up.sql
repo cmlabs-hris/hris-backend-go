@@ -14,6 +14,7 @@ CREATE TABLE companies (
     logo_url TEXT, 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_username_format CHECK (
         username ~ '^[A-Za-z0-9._-]{3,50}$'
     ),
