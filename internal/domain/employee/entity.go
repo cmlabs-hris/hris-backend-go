@@ -4,7 +4,7 @@ import "time"
 
 type Employee struct {
 	ID                    string
-	UserID                string
+	UserID                *string
 	CompanyID             string
 	WorkScheduleID        string
 	PositionID            string

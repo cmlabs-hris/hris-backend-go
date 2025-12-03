@@ -76,6 +76,7 @@ func (r *branchRepositoryImpl) Create(ctx context.Context, b branch.Branch) (bra
 		RETURNING id, company_id, name, address, timezone
 	`
 
+	b.Timezone = "Asia/Jakarta"
 	var result branch.Branch
 	err := q.QueryRow(ctx, query, b.CompanyID, b.Name, b.Address, b.Timezone).Scan(
 		&result.ID,

@@ -2,14 +2,21 @@ package company
 
 import (
 	"mime/multipart"
+	"strings"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
 )
 
 type CompanyResponse struct {
-	Name     string  `json:"company_name"`
-	Username string  `json:"company_username"`
-	Address  *string `json:"company_address,omitempty"`
+	ID        string     `json:"id"`
+	Name      string     `json:"company_name"`
+	Username  string     `json:"company_username"`
+	Address   *string    `json:"company_address,omitempty"`
+	LogoURL   *string    `json:"logo_url,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 }
 
 type CreateCompanyRequest struct {
@@ -54,6 +61,7 @@ func (r *CreateCompanyRequest) Validate() error {
 type UpdateCompanyRequest struct {
 	Name    *string `json:"company_name,omitempty"`
 	Address *string `json:"company_address,omitempty"`
+	LogoURL *string `json:"logo_url,omitempty"`
 }
 
 func (r *UpdateCompanyRequest) Validate() error {
@@ -74,4 +82,46 @@ func (r *UpdateCompanyRequest) Validate() error {
 	}
 
 	return nil
+}
+
+type UploadCompanyLogoRequest struct {
+	File       multipart.File        `json:"-"`
+	FileHeader *multipart.FileHeader `json:"-"`
+	CompanyID  string                `json:"-"`
+}
+
+func (r *UploadCompanyLogoRequest) Validate() error {
+	var errs validator.ValidationErrors
+
+	if r.FileHeader == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "file",
+			Message: "company logo photo is required",
+		})
+	}
+	filename := r.FileHeader.Filename
+	ext := strings.ToLower(filename[strings.LastIndex(filename, "."):])
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		// Validate image format
+		errs = append(errs, validator.ValidationError{
+			Field:   "file",
+			Message: "invalid file type: only jpg, jpeg, png allowed",
+		})
+	}
+	if r.FileHeader.Size > 10<<20 { // 10MB
+		errs = append(errs, validator.ValidationError{
+			Field:   "file",
+			Message: "company logo photo size must not exceed 10MB",
+		})
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+
+	return nil
+}
+
+type UploadCompanyLogoResponse struct {
+	LogoURL string `json:"logo_url"`
 }

@@ -130,7 +130,7 @@ func (a *AuthServiceImpl) LoginWithEmployeeCode(ctx context.Context, loginEmploy
 	}
 
 	// Ambil user, error jika tidak ada
-	userData, err := a.UserRepository.GetByID(ctx, employeeData.UserID)
+	userData, err := a.UserRepository.GetByID(ctx, *employeeData.UserID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return auth.TokenResponse{}, auth.ErrInvalidEmployeeCodeCredentials

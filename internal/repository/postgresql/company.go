@@ -59,6 +59,13 @@ func (c *companyRepositoryImpl) Update(ctx context.Context, id string, req compa
 			updates["address"] = *req.Address
 		}
 	}
+	if req.LogoURL != nil {
+		if *req.LogoURL == "" {
+			updates["logo_url"] = nil
+		} else {
+			updates["logo_url"] = *req.LogoURL
+		}
+	}
 
 	if len(updates) == 0 {
 		return fmt.Errorf("no updatable fields provided for company update")
@@ -155,14 +162,14 @@ func (c *companyRepositoryImpl) GetByID(ctx context.Context, id string) (company
 	q := GetQuerier(ctx, c.db)
 
 	query := `
-		SELECT id, name, username, address, created_at, updated_at
+		SELECT id, name, username, address, logo_url, created_at, updated_at, deleted_at
 		FROM companies
 		WHERE id = $1
 	`
 
 	var found company.Company
 	err := q.QueryRow(ctx, query, id).
-		Scan(&found.ID, &found.Name, &found.Username, &found.Address, &found.CreatedAt, &found.UpdatedAt)
+		Scan(&found.ID, &found.Name, &found.Username, &found.Address, &found.LogoURL, &found.CreatedAt, &found.UpdatedAt, &found.DeletedAt)
 	if err != nil {
 		return company.Company{}, err
 	}

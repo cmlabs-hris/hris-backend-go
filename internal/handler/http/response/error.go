@@ -9,6 +9,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/auth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
@@ -280,6 +281,30 @@ func HandleError(w http.ResponseWriter, err error) {
 		NotFound(w, "Attendance record not found")
 	case errors.Is(err, attendance.ErrUnauthorized):
 		Forbidden(w, "Unauthorized to access this attendance record")
+
+	// Invitation domain errors
+	case errors.Is(err, invitation.ErrInvitationNotFound):
+		NotFound(w, "Invitation not found")
+	case errors.Is(err, invitation.ErrInvitationExpired):
+		BadRequest(w, "Invitation has expired", nil)
+	case errors.Is(err, invitation.ErrInvitationAlreadyUsed):
+		Conflict(w, "Invitation has already been used")
+	case errors.Is(err, invitation.ErrInvitationRevoked):
+		BadRequest(w, "Invitation has been revoked", nil)
+	case errors.Is(err, invitation.ErrEmailAlreadyInvited):
+		Conflict(w, "This email already has a pending invitation")
+	case errors.Is(err, invitation.ErrEmailMismatch):
+		Forbidden(w, "Your email does not match the invitation")
+	case errors.Is(err, invitation.ErrNoPendingInvitation):
+		NotFound(w, "No pending invitation found for this employee")
+	case errors.Is(err, invitation.ErrEmployeeAlreadyLinked):
+		Conflict(w, "Employee is already linked to a user")
+	case errors.Is(err, invitation.ErrUserAlreadyHasCompany):
+		Conflict(w, "User already belongs to a company")
+	case errors.Is(err, invitation.ErrCannotRevokeAccepted):
+		BadRequest(w, "Cannot revoke an accepted invitation", nil)
+	case errors.Is(err, employee.ErrCannotDeleteSelf):
+		Forbidden(w, "You cannot delete your own employee record")
 
 	// Default
 	default:

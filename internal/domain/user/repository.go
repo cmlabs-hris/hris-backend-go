@@ -13,4 +13,5 @@ type UserRepository interface {
 	LinkPasswordAccount(ctx context.Context, id string, password string) (User, error)
 	UpdateRole(ctx context.Context, req UpdateUserRoleRequest) error
 	Update(ctx context.Context, req UpdateUserRequest) error
+	UpdateCompanyAndRole(ctx context.Context, userID, companyID, role string) error
 }

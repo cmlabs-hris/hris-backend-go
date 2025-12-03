@@ -10,4 +10,5 @@ type CompanyService interface {
 	GetByID(ctx context.Context, id string) (CompanyResponse, error)
 	Update(ctx context.Context, id string, req UpdateCompanyRequest) error
 	Delete(ctx context.Context, id string) error
+	UploadCompanyLogo(ctx context.Context, req UploadCompanyLogoRequest) (UploadCompanyLogoResponse, error)
 }

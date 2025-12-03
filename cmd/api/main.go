@@ -8,6 +8,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
 	appHTTP "github.com/cmlabs-hris/hris-backend-go/internal/handler/http"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/storage"
@@ -15,7 +16,9 @@ import (
 	attendanceService "github.com/cmlabs-hris/hris-backend-go/internal/service/attendance"
 	serviceAuth "github.com/cmlabs-hris/hris-backend-go/internal/service/auth"
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
+	employeeService "github.com/cmlabs-hris/hris-backend-go/internal/service/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
+	invitationService "github.com/cmlabs-hris/hris-backend-go/internal/service/invitation"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
 	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
@@ -50,6 +53,7 @@ func main() {
 	workScheduleLocationRepo := postgresql.NewWorkScheduleLocationRepository(db)
 	employeeScheduleAssignmentRepo := postgresql.NewEmployeeScheduleAssignmentRepository(db)
 	attendanceRepo := postgresql.NewAttendanceRepository(db)
+	invitationRepo := postgresql.NewInvitationRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
@@ -74,6 +78,10 @@ func main() {
 	}
 
 	fileService := file.NewFileService(fileStorage)
+	emailService, err := email.NewEmailService(cfg.SMTP)
+	if err != nil {
+		log.Fatal("Failed to initialize email service:", err)
+	}
 	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository)
 	companyService := serviceCompany.NewCompanyService(
 		db,
@@ -108,6 +116,23 @@ func main() {
 		branchRepo,
 		fileService,
 	)
+	invitationService := invitationService.NewInvitationService(
+		db,
+		invitationRepo,
+		employeeRepo,
+		userRepo,
+		emailService,
+		fileService,
+		cfg.Invitation,
+	)
+	employeeService := employeeService.NewEmployeeService(
+		db,
+		employeeRepo,
+		companyRepo,
+		fileService,
+		invitationService,
+		quotaService,
+	)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
@@ -115,6 +140,8 @@ func main() {
 	masterHandler := appHTTP.NewMasterHandler(masterService)
 	scheduleHandler := appHTTP.NewScheduleHandler(scheduleService)
 	attendanceHandler := appHTTP.NewAttendanceHandler(attendanceService)
+	invitationHandler := appHTTP.NewInvitationHandler(invitationService)
+	employeeHandler := appHTTP.NewEmployeeHandler(employeeService, invitationService)
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -124,6 +151,8 @@ func main() {
 		masterHandler,
 		scheduleHandler,
 		attendanceHandler,
+		employeeHandler,
+		invitationHandler,
 		cfg.Storage.BasePath,
 	)
 

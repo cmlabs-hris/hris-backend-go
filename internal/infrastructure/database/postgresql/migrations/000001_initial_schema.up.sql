@@ -28,7 +28,7 @@ CREATE TABLE users (
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     email VARCHAR(254) NOT NULL UNIQUE,
     password_hash VARCHAR(255),
-    role VARCHAR(20), -- 'owner', 'manager', 'employee'
+    role VARCHAR(20), -- 'owner', 'manager', 'employee', 'pending'
     oauth_provider VARCHAR(50) DEFAULT NULL CHECK (oauth_provider IS NULL OR oauth_provider = 'google'),
     oauth_provider_id VARCHAR(255),
     email_verified BOOLEAN NOT NULL DEFAULT false,
@@ -135,7 +135,7 @@ CREATE TABLE work_schedules (
 -- Main employee table, links to user, position, grade, branch, etc.
 CREATE TABLE employees (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     company_id UUID NOT NULL REFERENCES companies(id),
     work_schedule_id UUID NOT NULL REFERENCES work_schedules(id), -- Default schedule
     position_id UUID NOT NULL REFERENCES positions(id),

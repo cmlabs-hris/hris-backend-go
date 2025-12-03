@@ -1,4 +1,5 @@
 {
     "vscord.ignore.workspacesText": "",
-    "C_Cpp.errorSquiggles": "enabled"
+    "C_Cpp.errorSquiggles": "enabled",
+    "chat.promptFiles": true
 }

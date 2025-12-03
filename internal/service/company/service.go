@@ -45,6 +45,32 @@ type CompanyServiceImpl struct {
 	quotaService *leaveservice.QuotaService
 }
 
+// UploadCompanyLogo implements company.CompanyService.
+func (c *CompanyServiceImpl) UploadCompanyLogo(ctx context.Context, req company.UploadCompanyLogoRequest) (company.UploadCompanyLogoResponse, error) {
+	companyData, err := c.CompanyRepository.GetByID(ctx, req.CompanyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return company.UploadCompanyLogoResponse{}, company.ErrCompanyNotFound
+		}
+		return company.UploadCompanyLogoResponse{}, fmt.Errorf("failed to get company by ID: %w", err)
+	}
+
+	logoURLResult, err := c.fileService.UploadCompanyLogo(ctx, companyData.Username, req.File, req.FileHeader.Filename)
+	if err != nil {
+		return company.UploadCompanyLogoResponse{}, fmt.Errorf("failed to upload company logo: %w", err)
+	}
+	if err := c.CompanyRepository.Update(ctx, req.CompanyID, company.UpdateCompanyRequest{LogoURL: &logoURLResult}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return company.UploadCompanyLogoResponse{}, company.ErrCompanyNotFound
+		}
+		return company.UploadCompanyLogoResponse{}, fmt.Errorf("failed to update company logo URL: %w", err)
+	}
+
+	attachmentURL, _ := c.fileService.GetFileURL(ctx, logoURLResult, 0)
+
+	return company.UploadCompanyLogoResponse{LogoURL: attachmentURL}, nil
+}
+
 // Create implements company.CompanyService.
 // Subtle: this method shadows the method (CompanyRepository).Create of CompanyServiceImpl.CompanyRepository.
 func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompanyRequest) (company.Company, error) {
@@ -84,6 +110,7 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 			if err != nil {
 				return fmt.Errorf("failed to upload company logo attachment: %w", err)
 			}
+			attachmentURL, _ = c.fileService.GetFileURL(ctx, attachmentURL, 0)
 			req.AttachmentURL = &attachmentURL
 		}
 		newCompany, err = c.CompanyRepository.Create(txCtx, company.Company{
@@ -105,7 +132,9 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 		if !ok || userID == "" {
 			return fmt.Errorf("user_id claim is missing or invalid")
 		}
-
+		fmt.Println("hi")
+		var userIDPointer *string = &userID
+		fmt.Println(userIDPointer)
 		if err := c.UserRepository.Update(txCtx, user.UpdateUserRequest{ID: userID, CompanyID: &newCompany.ID}); err != nil {
 			return fmt.Errorf("failed to update user with company ID: %w", err)
 		}
@@ -126,7 +155,7 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 
 		// Create the owner as an employee (use email as temporary name, should be updated later)
 		newEmployee := employee.Employee{
-			UserID:            userID,
+			UserID:            userIDPointer,
 			CompanyID:         newCompany.ID,
 			PositionID:        positionID,
 			GradeID:           gradeID,
@@ -269,7 +298,30 @@ func (c *CompanyServiceImpl) Delete(ctx context.Context, id string) error {
 // GetByID implements company.CompanyService.
 // Subtle: this method shadows the method (CompanyRepository).GetByID of CompanyServiceImpl.CompanyRepository.
 func (c *CompanyServiceImpl) GetByID(ctx context.Context, id string) (company.CompanyResponse, error) {
-	panic("unimplemented")
+	companyData, err := c.CompanyRepository.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return company.CompanyResponse{}, company.ErrCompanyNotFound
+		}
+		return company.CompanyResponse{}, fmt.Errorf("failed to get company by ID: %w", err)
+	}
+	// Generate attachment URL if exists
+	var attachmentURL *string
+	if companyData.LogoURL != nil && *companyData.LogoURL != "" {
+		fullURL, err := c.fileService.GetFileURL(ctx, *companyData.LogoURL, 0)
+		if err == nil {
+			attachmentURL = &fullURL
+		}
+	}
+	return company.CompanyResponse{
+		ID:        companyData.ID,
+		Name:      companyData.Name,
+		Username:  companyData.Username,
+		Address:   companyData.Address,
+		LogoURL:   attachmentURL,
+		CreatedAt: companyData.CreatedAt,
+		UpdatedAt: companyData.UpdatedAt,
+	}, nil
 }
 
 // List implements company.CompanyService.

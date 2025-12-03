@@ -303,3 +303,26 @@ func (r *userRepositoryImpl) GetByEmail(ctx context.Context, email string) (user
 
 	return found, nil
 }
+
+// UpdateCompanyAndRole implements user.UserRepository.
+func (r *userRepositoryImpl) UpdateCompanyAndRole(ctx context.Context, userID, companyID, role string) error {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		UPDATE users
+		SET company_id = $1, role = $2, updated_at = NOW()
+		WHERE id = $3
+		RETURNING id
+	`
+
+	var updatedID string
+	err := q.QueryRow(ctx, query, companyID, role, userID).Scan(&updatedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("user not found: %w", err)
+		}
+		return fmt.Errorf("failed to update user company and role: %w", err)
+	}
+
+	return nil
+}

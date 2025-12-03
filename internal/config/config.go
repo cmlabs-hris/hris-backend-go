@@ -16,6 +16,24 @@ type Config struct {
 	App          AppConfig
 	OAuth2Google OAuth2GoogleConfig
 	Storage      StorageConfig
+	SMTP         SMTPConfig
+	Invitation   InvitationConfig
+}
+
+// SMTPConfig holds SMTP configuration for sending emails
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
+	FromName string
+}
+
+// InvitationConfig holds invitation-related configuration
+type InvitationConfig struct {
+	ExpiryDays int
+	BaseURL    string // e.g., "https://app.hris.com"
 }
 
 type DatabaseConfig struct {
@@ -144,6 +162,24 @@ func Load() (*Config, error) {
 		Type:     storageType,
 		BasePath: basePath,
 		BaseURL:  baseURL,
+	}
+
+	// SMTP Configuration
+	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", "587"))
+	config.SMTP = SMTPConfig{
+		Host:     getEnv("SMTP_HOST", ""),
+		Port:     smtpPort,
+		Username: getEnv("SMTP_USERNAME", ""),
+		Password: getEnv("SMTP_PASSWORD", ""),
+		From:     getEnv("SMTP_FROM", "noreply@hris.com"),
+		FromName: getEnv("SMTP_FROM_NAME", "HRIS"),
+	}
+
+	// Invitation Configuration
+	expiryDays, _ := strconv.Atoi(getEnv("INVITATION_EXPIRY_DAYS", "7"))
+	config.Invitation = InvitationConfig{
+		ExpiryDays: expiryDays,
+		BaseURL:    getEnv("INVITATION_BASE_URL", "http://localhost:3000"),
 	}
 
 	// Session configuration

@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -37,10 +37,10 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	// r.Use(chiMiddleware.RealIP)
 
 	r.Use(httplog.RequestLogger(logger, &httplog.Options{
-		Level:  slog.LevelDebug,
-		Schema: httplog.SchemaECS,
-		// LogRequestBody:  func(req *http.Request) bool { return true },
-		// LogResponseBody: func(req *http.Request) bool { return true },
+		Level:           slog.LevelDebug,
+		Schema:          httplog.SchemaECS,
+		LogRequestBody:  func(req *http.Request) bool { return true },
+		LogResponseBody: func(req *http.Request) bool { return true },
 	}))
 
 	r.Use(chiMiddleware.AllowContentType("application/json", "multipart/form-data"))
@@ -52,6 +52,9 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
 
 	r.Route("/api/v1", func(r chi.Router) {
+
+		// Public invitation route (no auth required) - uses /view/ prefix to avoid conflict with /my
+		r.Get("/invitations/view/{token}", invitationHandler.GetInvitationByToken)
 
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
@@ -95,6 +98,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 						r.Use(middleware.RequireOwner)
 						r.Put("/", companyhandler.Update)
 						r.Delete("/", companyhandler.Delete)
+						r.Post("/logo", companyhandler.UploadCompanyLogo)
 					})
 				})
 			})
@@ -250,11 +254,30 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 				r.Post("/clock-out", attendanceHandler.ClockOut) // Clock out
 			})
 
-			// r.Route("/employees", func(r chi.Router) {
-			// 	r.Get("/search", employeeHandler.SearchEmployees) // ← NEW: Autocomplete
-			// 	r.Get("/{id}", employeeHandler.GetEmployee)
-			// 	r.Post("/{id}/avatar", employeeHandler.UploadAvatar)
-			// })
+			r.Route("/employees", func(r chi.Router) {
+				r.Get("/{id}", employeeHandler.GetEmployee) // Get single employee
+
+				// Manager+ routes
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireManager)
+					r.Get("/", employeeHandler.ListEmployees)                           // List employees with filters
+					r.Get("/search", employeeHandler.SearchEmployees)                   // Autocomplete search
+					r.Post("/", employeeHandler.CreateEmployee)                         // Create employee (multipart)
+					r.Put("/{id}", employeeHandler.UpdateEmployee)                      // Update employee
+					r.Delete("/{id}", employeeHandler.DeleteEmployee)                   // Soft delete employee
+					r.Post("/{id}/inactivate", employeeHandler.InactivateEmployee)      // Inactivate employee
+					r.Post("/{id}/invitation/resend", employeeHandler.ResendInvitation) // Resend invitation
+					r.Post("/{id}/invitation/revoke", employeeHandler.RevokeInvitation) // Revoke invitation
+				})
+
+				r.Post("/{id}/avatar", employeeHandler.UploadAvatar) // Upload avatar
+			})
+
+			// Invitation Routes
+			r.Route("/invitations", func(r chi.Router) {
+				r.Get("/my", invitationHandler.ListMyInvitations)             // List pending invitations for current user
+				r.Post("/{token}/accept", invitationHandler.AcceptInvitation) // Accept invitation
+			})
 		})
 	})
 	return r

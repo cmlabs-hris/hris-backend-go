@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -19,12 +20,62 @@ type CompanyHandler interface {
 	GetByID(w http.ResponseWriter, r *http.Request)
 	Update(w http.ResponseWriter, r *http.Request)
 	Delete(w http.ResponseWriter, r *http.Request)
+	UploadCompanyLogo(w http.ResponseWriter, r *http.Request)
 }
 
 type CompanyHandlerImpl struct {
 	jwtService     jwt.Service
 	companyService company.CompanyService
 	fileService    file.FileService
+}
+
+// UploadCompanyLogo implements CompanyHandler.
+func (c *CompanyHandlerImpl) UploadCompanyLogo(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		slog.Error("Failed to parse multipart form", "error", err)
+		response.BadRequest(w, "Failed to parse form data", nil)
+		return
+	}
+
+	file, fileHeader, err := r.FormFile("attachment")
+	if err != nil {
+		slog.Error("Failed to get file from form", "error", err)
+		if err == http.ErrMissingFile {
+			response.BadRequest(w, "Company Logo photo is required", nil)
+		} else {
+			response.BadRequest(w, "Invalid file upload", nil)
+		}
+		return
+	}
+	defer file.Close()
+
+	var req company.UploadCompanyLogoRequest
+	req.File = file
+	req.FileHeader = fileHeader
+	if err := req.Validate(); err != nil {
+		response.HandleError(w, err)
+	}
+
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+
+	req.CompanyID = companyID
+	logoData, err := c.companyService.UploadCompanyLogo(r.Context(), req)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.Success(w, logoData)
 }
 
 // Create implements CompanyHandler.
@@ -104,7 +155,25 @@ func (c *CompanyHandlerImpl) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GetByID implements CompanyHandler.
 func (c *CompanyHandlerImpl) GetByID(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+	fmt.Println("hi")
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		response.HandleError(w, auth.ErrInvalidToken)
+		return
+	}
+	companyData, err := c.companyService.GetByID(r.Context(), companyID)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.Success(w, companyData)
 }
 
 // List implements CompanyHandler.
