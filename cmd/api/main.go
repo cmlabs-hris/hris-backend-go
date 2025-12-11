@@ -140,7 +140,7 @@ func main() {
 	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo)
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
 
-	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
+	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService, cfg.App.FrontendURL)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
 	leaveHandler := appHTTP.NewLeaveHandler(leaveService, fileService)
 	masterHandler := appHTTP.NewMasterHandler(masterService)
