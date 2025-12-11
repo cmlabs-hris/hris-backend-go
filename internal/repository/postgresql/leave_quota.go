@@ -230,9 +230,6 @@ func (r *leaveQuotaRepositoryImpl) GetByEmployeeTypeYear(ctx context.Context, em
 		&quota.CreatedAt, &quota.UpdatedAt)
 
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return leave.LeaveQuota{}, leave.ErrQuotaNotFound
-		}
 		return leave.LeaveQuota{}, err
 	}
 

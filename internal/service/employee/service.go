@@ -379,7 +379,7 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 		createdInvitation = inv
 
 		// Assign leave quotas for the employee based on eligible leave types
-		assignedQuotas, err := s.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdEmployee, hireDate.Year())
+		assignedQuotas, err := s.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdEmployee, time.Now().Year())
 		if err != nil {
 			slog.Warn("Failed to assign leave quotas for employee", "employee_id", createdEmployee.ID, "error", err)
 			// Don't fail the transaction, just log the warning

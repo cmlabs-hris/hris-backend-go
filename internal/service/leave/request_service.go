@@ -183,7 +183,10 @@ func (r *RequestService) checkEligibility(ctx context.Context, emp employee.Empl
 	if leaveType.HasQuota != nil && *leaveType.HasQuota {
 		quota, err := r.LeaveQuotaRepository.GetByEmployeeTypeYear(ctx, emp.ID, leaveType.ID, time.Now().Year())
 		if err != nil {
-			return false, leave.ErrQuotaNotFound
+			if errors.Is(err, pgx.ErrNoRows) {
+				return false, leave.ErrQuotaNotFound
+			}
+			return false, fmt.Errorf("failed to get leave quota: %w", err)
 		}
 
 		// Check if employee has available quota
