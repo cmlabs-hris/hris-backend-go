@@ -14,10 +14,10 @@ import (
 
 // CreateEmployeeRequest for creating a new employee
 type CreateEmployeeRequest struct {
-	WorkScheduleID        *string               `json:"work_schedule_id,omitempty"`
+	WorkScheduleID        string                `json:"work_schedule_id"`
 	PositionID            string                `json:"position_id"`
-	GradeID               *string               `json:"grade_id,omitempty"`
-	BranchID              *string               `json:"branch_id,omitempty"`
+	GradeID               string                `json:"grade_id"`
+	BranchID              string                `json:"branch_id,omitempty"`
 	EmployeeCode          string                `json:"employee_code"`
 	FullName              string                `json:"full_name"`
 	Email                 string                `json:"email"` // Required for invitation
@@ -43,10 +43,31 @@ type CreateEmployeeRequest struct {
 func (r *CreateEmployeeRequest) Validate() error {
 	var errs validator.ValidationErrors
 
+	if validator.IsEmpty(r.WorkScheduleID) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "work_schedule_id",
+			Message: "work_schedule_id is required",
+		})
+	}
+
 	if validator.IsEmpty(r.PositionID) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "position_id",
 			Message: "position_id is required",
+		})
+	}
+
+	if validator.IsEmpty(r.GradeID) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "grade_id",
+			Message: "grade_id is required",
+		})
+	}
+
+	if validator.IsEmpty(r.GradeID) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "branch_id",
+			Message: "branch_id is required",
 		})
 	}
 

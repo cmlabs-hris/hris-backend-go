@@ -269,15 +269,9 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 
 	// Get optional string values with empty string handling
 	var workScheduleID, gradeID, branchID string
-	if req.WorkScheduleID != nil {
-		workScheduleID = *req.WorkScheduleID
-	}
-	if req.GradeID != nil {
-		gradeID = *req.GradeID
-	}
-	if req.BranchID != nil {
-		branchID = *req.BranchID
-	}
+	workScheduleID = req.WorkScheduleID
+	gradeID = req.GradeID
+	branchID = req.BranchID
 
 	var nik string
 	if req.NIK != nil {
