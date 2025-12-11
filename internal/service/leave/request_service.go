@@ -47,7 +47,7 @@ func (r *RequestService) Approve(ctx context.Context, requestID string, approved
 	request.ApprovedAt = &approvedAtTime
 	request.ApprovedBy = &approvedID
 
-	updateStatus := string(request.Status)
+	updateStatus := string(leave.LeaveRequestStatusApproved)
 	update := leave.UpdateLeaveRequestRequest{
 		ID:         request.ID,
 		Status:     &updateStatus,
@@ -157,7 +157,7 @@ func (r *RequestService) Reject(
 	request.ApprovedBy = &approvedID
 	request.ApprovedAt = &approvedAtTime
 
-	updateStatus := string(request.Status)
+	updateStatus := string(leave.LeaveRequestStatusRejected)
 	update := leave.UpdateLeaveRequestRequest{
 		ID:              request.ID,
 		Status:          &updateStatus,

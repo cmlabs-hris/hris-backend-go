@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -323,13 +323,23 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 
 			// Dashboard Routes (Manager+)
 			r.Route("/dashboard", func(r chi.Router) {
-				r.Use(middleware.RequireManager)
-				r.Get("/", dashboardHandler.GetDashboard)
-				r.Get("/employee-current-number", dashboardHandler.GetEmployeeCurrentNumber)
-				r.Get("/employee-status-stats", dashboardHandler.GetEmployeeStatusStats)
-				r.Get("/monthly-attendance", dashboardHandler.GetMonthlyAttendance)
-				r.Get("/daily-attendance-stats", dashboardHandler.GetDailyAttendanceStats)
+				r.Route("/admin", func(r chi.Router) {
+					r.Use(middleware.RequireManager)
+					r.Get("/", dashboardHandler.GetDashboard)
+					r.Get("/employee-current-number", dashboardHandler.GetEmployeeCurrentNumber)
+					r.Get("/employee-status-stats", dashboardHandler.GetEmployeeStatusStats)
+					r.Get("/monthly-attendance", dashboardHandler.GetMonthlyAttendance)
+					r.Get("/daily-attendance-stats", dashboardHandler.GetDailyAttendanceStats)
+				})
+				r.Route("/employee", func(r chi.Router) {
+					r.Get("/", employeeDashboardHandler.GetDashboard)
+					r.Get("/work-stats", employeeDashboardHandler.GetWorkStats)
+					r.Get("/attendance-summary", employeeDashboardHandler.GetAttendanceSummary)
+					r.Get("/leave-summary", employeeDashboardHandler.GetLeaveSummary)
+					r.Get("/work-hours-chart", employeeDashboardHandler.GetWorkHoursChart)
+				})
 			})
+
 		})
 	})
 	return r

@@ -18,6 +18,7 @@ import (
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
 	dashboardService "github.com/cmlabs-hris/hris-backend-go/internal/service/dashboard"
 	employeeService "github.com/cmlabs-hris/hris-backend-go/internal/service/employee"
+	employeeDashboardService "github.com/cmlabs-hris/hris-backend-go/internal/service/employee_dashboard"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	invitationService "github.com/cmlabs-hris/hris-backend-go/internal/service/invitation"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
@@ -58,6 +59,7 @@ func main() {
 	invitationRepo := postgresql.NewInvitationRepository(db)
 	payrollRepo := postgresql.NewPayrollRepository(db)
 	dashboardRepo := postgresql.NewDashboardRepository(db)
+	empDashboardRepo := postgresql.NewEmployeeDashboardRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
@@ -139,6 +141,7 @@ func main() {
 	)
 	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo)
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
+	empDashboardSvc := employeeDashboardService.NewEmployeeDashboardService(empDashboardRepo)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
@@ -150,6 +153,7 @@ func main() {
 	employeeHandler := appHTTP.NewEmployeeHandler(employeeService, invitationService)
 	payrollHandler := appHTTP.NewPayrollHandler(payrollSvc)
 	dashboardHandler := appHTTP.NewDashboardHandler(dashboardSvc)
+	empDashboardHandler := appHTTP.NewEmployeeDashboardHandler(empDashboardSvc)
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -163,6 +167,7 @@ func main() {
 		invitationHandler,
 		payrollHandler,
 		dashboardHandler,
+		empDashboardHandler,
 		cfg.Storage.BasePath,
 	)
 
