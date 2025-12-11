@@ -143,7 +143,7 @@ func main() {
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
 	empDashboardSvc := employeeDashboardService.NewEmployeeDashboardService(empDashboardRepo)
 
-	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
+	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService, cfg.App.FrontendURL)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
 	leaveHandler := appHTTP.NewLeaveHandler(leaveService, fileService)
 	masterHandler := appHTTP.NewMasterHandler(masterService)

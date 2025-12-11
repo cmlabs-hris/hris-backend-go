@@ -54,9 +54,10 @@ type JWTConfig struct {
 
 // AppConfig holds application configuration
 type AppConfig struct {
-	Port     int
-	Env      string
-	LogLevel string
+	Port        int
+	Env         string
+	LogLevel    string
+	FrontendURL string
 }
 
 type OAuth2GoogleConfig struct {
@@ -127,9 +128,10 @@ func Load() (*Config, error) {
 	}
 
 	config.App = AppConfig{
-		Port:     appPort,
-		Env:      getEnv("APP_ENV", "development"),
-		LogLevel: getEnv("LOG_LEVEL", "info"),
+		Port:        appPort,
+		Env:         getEnv("APP_ENV", "development"),
+		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		FrontendURL: getEnv("FRONTEND_URL", "http://localhost:3000"),
 	}
 
 	// JWT configuration
