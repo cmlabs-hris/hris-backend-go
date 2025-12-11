@@ -54,7 +54,7 @@ func (e *employeeRepositoryImpl) GetActiveByCompanyID(ctx context.Context, compa
 		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+			bank_name, bank_account_holder_name, bank_account_number, base_salary, created_at, updated_at, deleted_at
 		FROM employees
 		WHERE company_id = $1 AND employment_status = $2 AND deleted_at IS NULL
 	`
@@ -75,7 +75,7 @@ func (e *employeeRepositoryImpl) GetActiveByCompanyID(ctx context.Context, compa
 			&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
 			&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
 			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
-			&emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+			&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -99,17 +99,17 @@ func (e *employeeRepositoryImpl) Create(ctx context.Context, newEmployee employe
 			user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number
+			bank_name, bank_account_holder_name, bank_account_number, base_salary
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
 			$8, $9, $10, $11, $12, $13, $14, $15, $16,
 			$17, $18, $19, $20, $21,
-			$22, $23, $24
+			$22, $23, $24, $25
 		)
 		RETURNING id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+			bank_name, bank_account_holder_name, bank_account_number, base_salary, created_at, updated_at, deleted_at
 	`
 
 	var created employee.Employee
@@ -119,7 +119,7 @@ func (e *employeeRepositoryImpl) Create(ctx context.Context, newEmployee employe
 		newEmployee.Gender, newEmployee.PhoneNumber, newEmployee.Address, newEmployee.PlaceOfBirth, newEmployee.DOB,
 		newEmployee.AvatarURL, newEmployee.Education, newEmployee.HireDate, newEmployee.ResignationDate,
 		newEmployee.EmploymentType, newEmployee.EmploymentStatus, newEmployee.WarningLetter,
-		newEmployee.BankName, newEmployee.BankAccountHolderName, newEmployee.BankAccountNumber,
+		newEmployee.BankName, newEmployee.BankAccountHolderName, newEmployee.BankAccountNumber, newEmployee.BaseSalary,
 	).Scan(
 		&created.ID, &created.UserID, &created.CompanyID, &created.WorkScheduleID, &created.PositionID,
 		&created.GradeID, &created.BranchID, &created.EmployeeCode, &created.FullName, &created.NIK,
@@ -127,7 +127,7 @@ func (e *employeeRepositoryImpl) Create(ctx context.Context, newEmployee employe
 		&created.AvatarURL, &created.Education, &created.HireDate, &created.ResignationDate,
 		&created.EmploymentType, &created.EmploymentStatus, &created.WarningLetter,
 		&created.BankName, &created.BankAccountHolderName, &created.BankAccountNumber,
-		&created.CreatedAt, &created.UpdatedAt, &created.DeletedAt,
+		&created.BaseSalary, &created.CreatedAt, &created.UpdatedAt, &created.DeletedAt,
 	)
 	if err != nil {
 		return employee.Employee{}, err
@@ -173,7 +173,7 @@ func (e *employeeRepositoryImpl) GetByEmployeeCode(ctx context.Context, companyI
 		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+			bank_name, bank_account_holder_name, bank_account_number, base_salary, created_at, updated_at, deleted_at
 		FROM employees
 		WHERE employee_code = $1 AND company_id = $2 AND deleted_at IS NULL
 	`
@@ -187,7 +187,7 @@ func (e *employeeRepositoryImpl) GetByEmployeeCode(ctx context.Context, companyI
 			&found.AvatarURL, &found.Education, &found.HireDate, &found.ResignationDate,
 			&found.EmploymentType, &found.EmploymentStatus, &found.WarningLetter,
 			&found.BankName, &found.BankAccountHolderName, &found.BankAccountNumber,
-			&found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
+			&found.BaseSalary, &found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
 		)
 	if err != nil {
 		return employee.Employee{}, err
@@ -204,7 +204,7 @@ func (e *employeeRepositoryImpl) GetByID(ctx context.Context, id string) (employ
 		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+			bank_name, bank_account_holder_name, bank_account_number, base_salary, created_at, updated_at, deleted_at
 		FROM employees
 		WHERE id = $1
 	`
@@ -218,7 +218,7 @@ func (e *employeeRepositoryImpl) GetByID(ctx context.Context, id string) (employ
 			&found.AvatarURL, &found.Education, &found.HireDate, &found.ResignationDate,
 			&found.EmploymentType, &found.EmploymentStatus, &found.WarningLetter,
 			&found.BankName, &found.BankAccountHolderName, &found.BankAccountNumber,
-			&found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
+			&found.BaseSalary, &found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
 		)
 	if err != nil {
 		return employee.Employee{}, err
@@ -235,7 +235,7 @@ func (e *employeeRepositoryImpl) GetByUserID(ctx context.Context, userID string)
 		SELECT id, user_id, company_id, work_schedule_id, position_id, grade_id, branch_id, employee_code,
 			full_name, nik, gender, phone_number, address, place_of_birth, dob, avatar_url, education,
 			hire_date, resignation_date, employment_type, employment_status, warning_letter,
-			bank_name, bank_account_holder_name, bank_account_number, created_at, updated_at, deleted_at
+			bank_name, bank_account_holder_name, bank_account_number, base_salary, created_at, updated_at, deleted_at
 		FROM employees
 		WHERE user_id = $1
 	`
@@ -249,7 +249,7 @@ func (e *employeeRepositoryImpl) GetByUserID(ctx context.Context, userID string)
 			&found.AvatarURL, &found.Education, &found.HireDate, &found.ResignationDate,
 			&found.EmploymentType, &found.EmploymentStatus, &found.WarningLetter,
 			&found.BankName, &found.BankAccountHolderName, &found.BankAccountNumber,
-			&found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
+			&found.BaseSalary, &found.CreatedAt, &found.UpdatedAt, &found.DeletedAt,
 		)
 	if err != nil {
 		return employee.Employee{}, err
@@ -386,6 +386,9 @@ func (e *employeeRepositoryImpl) Update(ctx context.Context, id string, companyI
 			updates["bank_account_number"] = *req.BankAccountNumber
 		}
 	}
+	if req.BaseSalary != nil {
+		updates["base_salary"] = *req.BaseSalary
+	}
 
 	if len(updates) == 0 {
 		return nil // No updates provided
@@ -424,7 +427,7 @@ func (e *employeeRepositoryImpl) GetByIDWithDetails(ctx context.Context, id stri
 			e.employee_code, e.full_name, e.nik, e.gender, e.phone_number, e.address, e.place_of_birth, 
 			e.dob, e.avatar_url, e.education, e.hire_date, e.resignation_date, e.employment_type, 
 			e.employment_status, e.warning_letter, e.bank_name, e.bank_account_holder_name, 
-			e.bank_account_number, e.created_at, e.updated_at, e.deleted_at,
+			e.bank_account_number, e.base_salary, e.created_at, e.updated_at, e.deleted_at,
 			ws.name AS work_schedule_name,
 			p.name AS position_name,
 			g.name AS grade_name,
@@ -445,7 +448,7 @@ func (e *employeeRepositoryImpl) GetByIDWithDetails(ctx context.Context, id stri
 		&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
 		&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
 		&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
-		&emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+		&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 		&emp.WorkScheduleName, &emp.PositionName, &emp.GradeName, &emp.BranchName,
 	)
 	if err != nil {
@@ -468,7 +471,7 @@ func (e *employeeRepositoryImpl) Search(ctx context.Context, queryStr string, co
 			e.employee_code, e.full_name, e.nik, e.gender, e.phone_number, e.address, e.place_of_birth, 
 			e.dob, e.avatar_url, e.education, e.hire_date, e.resignation_date, e.employment_type, 
 			e.employment_status, e.warning_letter, e.bank_name, e.bank_account_holder_name, 
-			e.bank_account_number, e.created_at, e.updated_at, e.deleted_at,
+			e.bank_account_number, e.base_salary, e.created_at, e.updated_at, e.deleted_at,
 			ws.name AS work_schedule_name,
 			p.name AS position_name,
 			g.name AS grade_name,
@@ -505,7 +508,7 @@ func (e *employeeRepositoryImpl) Search(ctx context.Context, queryStr string, co
 			&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
 			&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
 			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
-			&emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+			&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 			&emp.WorkScheduleName, &emp.PositionName, &emp.GradeName, &emp.BranchName,
 		)
 		if err != nil {
@@ -637,7 +640,7 @@ func (e *employeeRepositoryImpl) List(ctx context.Context, filter employee.Emplo
 			e.employee_code, e.full_name, e.nik, e.gender, e.phone_number, e.address, e.place_of_birth, 
 			e.dob, e.avatar_url, e.education, e.hire_date, e.resignation_date, e.employment_type, 
 			e.employment_status, e.warning_letter, e.bank_name, e.bank_account_holder_name, 
-			e.bank_account_number, e.created_at, e.updated_at, e.deleted_at,
+			e.bank_account_number, e.base_salary, e.created_at, e.updated_at, e.deleted_at,
 			ws.name AS work_schedule_name,
 			p.name AS position_name,
 			g.name AS grade_name,
@@ -670,7 +673,7 @@ func (e *employeeRepositoryImpl) List(ctx context.Context, filter employee.Emplo
 			&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
 			&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
 			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
-			&emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+			&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 			&emp.WorkScheduleName, &emp.PositionName, &emp.GradeName, &emp.BranchName,
 		)
 		if err != nil {

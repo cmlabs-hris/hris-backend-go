@@ -142,6 +142,7 @@ func mapEmployeeToResponse(emp employee.EmployeeWithDetails) employee.EmployeeRe
 		BankName:              &emp.BankName,
 		BankAccountHolderName: emp.BankAccountHolderName,
 		BankAccountNumber:     &emp.BankAccountNumber,
+		BaseSalary:            emp.BaseSalary,
 		CreatedAt:             emp.CreatedAt.Format("2006-01-02 15:04:05"),
 		UpdatedAt:             emp.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
@@ -314,6 +315,7 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 		BankName:              bankName,
 		BankAccountHolderName: req.BankAccountHolderName,
 		BankAccountNumber:     bankAccountNumber,
+		BaseSalary:            req.BaseSalary,
 	}
 
 	var createdEmployee employee.Employee
@@ -383,7 +385,7 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 		createdInvitation = inv
 
 		// Assign leave quotas for the employee based on eligible leave types
-		assignedQuotas, err := s.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdEmployee, time.Now().Year())
+		assignedQuotas, err := s.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdEmployee, hireDate.Year())
 		if err != nil {
 			slog.Warn("Failed to assign leave quotas for employee", "employee_id", createdEmployee.ID, "error", err)
 			// Don't fail the transaction, just log the warning

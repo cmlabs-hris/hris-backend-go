@@ -16,11 +16,13 @@ import (
 	attendanceService "github.com/cmlabs-hris/hris-backend-go/internal/service/attendance"
 	serviceAuth "github.com/cmlabs-hris/hris-backend-go/internal/service/auth"
 	serviceCompany "github.com/cmlabs-hris/hris-backend-go/internal/service/company"
+	dashboardService "github.com/cmlabs-hris/hris-backend-go/internal/service/dashboard"
 	employeeService "github.com/cmlabs-hris/hris-backend-go/internal/service/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
 	invitationService "github.com/cmlabs-hris/hris-backend-go/internal/service/invitation"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
+	payrollService "github.com/cmlabs-hris/hris-backend-go/internal/service/payroll"
 	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
 )
 
@@ -54,6 +56,8 @@ func main() {
 	employeeScheduleAssignmentRepo := postgresql.NewEmployeeScheduleAssignmentRepository(db)
 	attendanceRepo := postgresql.NewAttendanceRepository(db)
 	invitationRepo := postgresql.NewInvitationRepository(db)
+	payrollRepo := postgresql.NewPayrollRepository(db)
+	dashboardRepo := postgresql.NewDashboardRepository(db)
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
@@ -133,6 +137,8 @@ func main() {
 		invitationService,
 		quotaService,
 	)
+	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo)
+	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
@@ -142,6 +148,8 @@ func main() {
 	attendanceHandler := appHTTP.NewAttendanceHandler(attendanceService)
 	invitationHandler := appHTTP.NewInvitationHandler(invitationService)
 	employeeHandler := appHTTP.NewEmployeeHandler(employeeService, invitationService)
+	payrollHandler := appHTTP.NewPayrollHandler(payrollSvc)
+	dashboardHandler := appHTTP.NewDashboardHandler(dashboardSvc)
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -153,6 +161,8 @@ func main() {
 		attendanceHandler,
 		employeeHandler,
 		invitationHandler,
+		payrollHandler,
+		dashboardHandler,
 		cfg.Storage.BasePath,
 	)
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
+	"github.com/shopspring/decimal"
 )
 
 // ========================================
@@ -34,6 +35,7 @@ type CreateEmployeeRequest struct {
 	BankName              *string               `json:"bank_name,omitempty"`
 	BankAccountHolderName *string               `json:"bank_account_holder_name,omitempty"`
 	BankAccountNumber     *string               `json:"bank_account_number,omitempty"`
+	BaseSalary            *decimal.Decimal      `json:"base_salary,omitempty"`
 	File                  multipart.File        `json:"-"`
 	FileHeader            *multipart.FileHeader `json:"-"`
 }
@@ -182,28 +184,29 @@ func (r *CreateEmployeeRequest) Validate() error {
 
 // UpdateEmployeeRequest for updating an existing employee
 type UpdateEmployeeRequest struct {
-	ID                    string  `json:"-"`
-	WorkScheduleID        *string `json:"work_schedule_id,omitempty"`
-	PositionID            *string `json:"position_id,omitempty"`
-	GradeID               *string `json:"grade_id,omitempty"`
-	BranchID              *string `json:"branch_id,omitempty"`
-	EmployeeCode          *string `json:"employee_code,omitempty"`
-	FullName              *string `json:"full_name,omitempty"`
-	NIK                   *string `json:"nik,omitempty"`
-	Gender                *string `json:"gender,omitempty"`
-	PhoneNumber           *string `json:"phone_number,omitempty"`
-	Address               *string `json:"address,omitempty"`
-	PlaceOfBirth          *string `json:"place_of_birth,omitempty"`
-	DOB                   *string `json:"dob,omitempty"`
-	Education             *string `json:"education,omitempty"`
-	HireDate              *string `json:"hire_date,omitempty"`
-	ResignationDate       *string `json:"resignation_date,omitempty"`
-	EmploymentType        *string `json:"employment_type,omitempty"`
-	EmploymentStatus      *string `json:"employment_status,omitempty"`
-	WarningLetter         *string `json:"warning_letter,omitempty"`
-	BankName              *string `json:"bank_name,omitempty"`
-	BankAccountHolderName *string `json:"bank_account_holder_name,omitempty"`
-	BankAccountNumber     *string `json:"bank_account_number,omitempty"`
+	ID                    string           `json:"-"`
+	WorkScheduleID        *string          `json:"work_schedule_id,omitempty"`
+	PositionID            *string          `json:"position_id,omitempty"`
+	GradeID               *string          `json:"grade_id,omitempty"`
+	BranchID              *string          `json:"branch_id,omitempty"`
+	EmployeeCode          *string          `json:"employee_code,omitempty"`
+	FullName              *string          `json:"full_name,omitempty"`
+	NIK                   *string          `json:"nik,omitempty"`
+	Gender                *string          `json:"gender,omitempty"`
+	PhoneNumber           *string          `json:"phone_number,omitempty"`
+	Address               *string          `json:"address,omitempty"`
+	PlaceOfBirth          *string          `json:"place_of_birth,omitempty"`
+	DOB                   *string          `json:"dob,omitempty"`
+	Education             *string          `json:"education,omitempty"`
+	HireDate              *string          `json:"hire_date,omitempty"`
+	ResignationDate       *string          `json:"resignation_date,omitempty"`
+	EmploymentType        *string          `json:"employment_type,omitempty"`
+	EmploymentStatus      *string          `json:"employment_status,omitempty"`
+	WarningLetter         *string          `json:"warning_letter,omitempty"`
+	BankName              *string          `json:"bank_name,omitempty"`
+	BankAccountHolderName *string          `json:"bank_account_holder_name,omitempty"`
+	BankAccountNumber     *string          `json:"bank_account_number,omitempty"`
+	BaseSalary            *decimal.Decimal `json:"base_salary,omitempty"`
 }
 
 func (r *UpdateEmployeeRequest) Validate() error {
@@ -300,37 +303,38 @@ func (r *UpdateEmployeeRequest) Validate() error {
 
 // EmployeeResponse for returning employee data with joined names
 type EmployeeResponse struct {
-	ID                    string  `json:"id"`
-	UserID                *string `json:"user_id,omitempty"`
-	CompanyID             string  `json:"company_id"`
-	WorkScheduleID        *string `json:"work_schedule_id,omitempty"`
-	WorkScheduleName      *string `json:"work_schedule_name,omitempty"`
-	PositionID            *string `json:"position_id,omitempty"`
-	PositionName          *string `json:"position_name,omitempty"`
-	GradeID               *string `json:"grade_id,omitempty"`
-	GradeName             *string `json:"grade_name,omitempty"`
-	BranchID              *string `json:"branch_id,omitempty"`
-	BranchName            *string `json:"branch_name,omitempty"`
-	EmployeeCode          string  `json:"employee_code"`
-	FullName              string  `json:"full_name"`
-	NIK                   *string `json:"nik,omitempty"`
-	Gender                string  `json:"gender"`
-	PhoneNumber           string  `json:"phone_number"`
-	Address               *string `json:"address,omitempty"`
-	PlaceOfBirth          *string `json:"place_of_birth,omitempty"`
-	DOB                   *string `json:"dob,omitempty"`
-	AvatarURL             *string `json:"avatar_url,omitempty"`
-	Education             *string `json:"education,omitempty"`
-	HireDate              string  `json:"hire_date"`
-	ResignationDate       *string `json:"resignation_date,omitempty"`
-	EmploymentType        string  `json:"employment_type"`
-	EmploymentStatus      string  `json:"employment_status"`
-	WarningLetter         *string `json:"warning_letter,omitempty"`
-	BankName              *string `json:"bank_name,omitempty"`
-	BankAccountHolderName *string `json:"bank_account_holder_name,omitempty"`
-	BankAccountNumber     *string `json:"bank_account_number,omitempty"`
-	CreatedAt             string  `json:"created_at"`
-	UpdatedAt             string  `json:"updated_at"`
+	ID                    string           `json:"id"`
+	UserID                *string          `json:"user_id,omitempty"`
+	CompanyID             string           `json:"company_id"`
+	WorkScheduleID        *string          `json:"work_schedule_id,omitempty"`
+	WorkScheduleName      *string          `json:"work_schedule_name,omitempty"`
+	PositionID            *string          `json:"position_id,omitempty"`
+	PositionName          *string          `json:"position_name,omitempty"`
+	GradeID               *string          `json:"grade_id,omitempty"`
+	GradeName             *string          `json:"grade_name,omitempty"`
+	BranchID              *string          `json:"branch_id,omitempty"`
+	BranchName            *string          `json:"branch_name,omitempty"`
+	EmployeeCode          string           `json:"employee_code"`
+	FullName              string           `json:"full_name"`
+	NIK                   *string          `json:"nik,omitempty"`
+	Gender                string           `json:"gender"`
+	PhoneNumber           string           `json:"phone_number"`
+	Address               *string          `json:"address,omitempty"`
+	PlaceOfBirth          *string          `json:"place_of_birth,omitempty"`
+	DOB                   *string          `json:"dob,omitempty"`
+	AvatarURL             *string          `json:"avatar_url,omitempty"`
+	Education             *string          `json:"education,omitempty"`
+	HireDate              string           `json:"hire_date"`
+	ResignationDate       *string          `json:"resignation_date,omitempty"`
+	EmploymentType        string           `json:"employment_type"`
+	EmploymentStatus      string           `json:"employment_status"`
+	WarningLetter         *string          `json:"warning_letter,omitempty"`
+	BankName              *string          `json:"bank_name,omitempty"`
+	BankAccountHolderName *string          `json:"bank_account_holder_name,omitempty"`
+	BankAccountNumber     *string          `json:"bank_account_number,omitempty"`
+	BaseSalary            *decimal.Decimal `json:"base_salary,omitempty"`
+	CreatedAt             string           `json:"created_at"`
+	UpdatedAt             string           `json:"updated_at"`
 }
 
 // EmployeeFilter for filtering employee list

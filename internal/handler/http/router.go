@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -277,6 +277,58 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 			r.Route("/invitations", func(r chi.Router) {
 				r.Get("/my", invitationHandler.ListMyInvitations)             // List pending invitations for current user
 				r.Post("/{token}/accept", invitationHandler.AcceptInvitation) // Accept invitation
+			})
+
+			// Payroll Routes
+			r.Route("/payroll", func(r chi.Router) {
+				r.Use(middleware.RequireManager)
+
+				// Settings
+				r.Get("/settings", payrollHandler.GetSettings)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOwner)
+					r.Put("/settings", payrollHandler.UpdateSettings)
+				})
+
+				// Components
+				r.Get("/components", payrollHandler.ListComponents)
+				r.Get("/components/{id}", payrollHandler.GetComponent)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOwner)
+					r.Post("/components", payrollHandler.CreateComponent)
+					r.Put("/components/{id}", payrollHandler.UpdateComponent)
+					r.Delete("/components/{id}", payrollHandler.DeleteComponent)
+				})
+
+				// Employee Components
+				r.Post("/employees/{employeeId}/components", payrollHandler.AssignComponent)
+				r.Get("/employees/{employeeId}/components", payrollHandler.GetEmployeeComponents)
+				r.Put("/employee-components/{id}", payrollHandler.UpdateEmployeeComponent)
+				r.Delete("/employee-components/{id}", payrollHandler.RemoveEmployeeComponent)
+
+				// Payroll Records
+				r.Post("/generate", payrollHandler.GeneratePayroll)
+				r.Get("/records", payrollHandler.ListPayrollRecords)
+				r.Get("/records/{id}", payrollHandler.GetPayrollRecord)
+				r.Put("/records/{id}", payrollHandler.UpdatePayrollRecord)
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOwner)
+					r.Delete("/records/{id}", payrollHandler.DeletePayrollRecord)
+					r.Post("/finalize", payrollHandler.FinalizePayroll)
+				})
+
+				// Summary
+				r.Get("/summary", payrollHandler.GetPayrollSummary)
+			})
+
+			// Dashboard Routes (Manager+)
+			r.Route("/dashboard", func(r chi.Router) {
+				r.Use(middleware.RequireManager)
+				r.Get("/", dashboardHandler.GetDashboard)
+				r.Get("/employee-current-number", dashboardHandler.GetEmployeeCurrentNumber)
+				r.Get("/employee-status-stats", dashboardHandler.GetEmployeeStatusStats)
+				r.Get("/monthly-attendance", dashboardHandler.GetMonthlyAttendance)
+				r.Get("/daily-attendance-stats", dashboardHandler.GetDailyAttendanceStats)
 			})
 		})
 	})

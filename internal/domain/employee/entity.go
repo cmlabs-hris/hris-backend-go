@@ -1,6 +1,10 @@
 package employee
 
-import "time"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 type Employee struct {
 	ID                    string
@@ -28,6 +32,7 @@ type Employee struct {
 	BankName              string
 	BankAccountHolderName *string
 	BankAccountNumber     string
+	BaseSalary            *decimal.Decimal
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
 	DeletedAt             *time.Time
