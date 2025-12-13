@@ -257,11 +257,17 @@ func (a *AuthHandlerImpl) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	// RefreshToken implements AuthHandler.
 	var refreshTokenReq auth.RefreshTokenRequest
 
-	// 1. Decode JSON
-	if err := json.NewDecoder(r.Body).Decode(&refreshTokenReq); err != nil {
-		slog.Error("Refresh Token decode error", "error", err)
-		response.BadRequest(w, "Invalid request format", nil)
-		return
+	// Try to get refresh token from cookie first (preferred method)
+	refreshTokenCookie, err := r.Cookie("refresh_token")
+	if err == nil && refreshTokenCookie.Value != "" {
+		refreshTokenReq.RefreshToken = refreshTokenCookie.Value
+	} else {
+		// Fallback: try to get from JSON body
+		if err := json.NewDecoder(r.Body).Decode(&refreshTokenReq); err != nil {
+			slog.Error("Refresh Token decode error", "error", err)
+			response.BadRequest(w, "Invalid request format", nil)
+			return
+		}
 	}
 
 	// Validate DTO

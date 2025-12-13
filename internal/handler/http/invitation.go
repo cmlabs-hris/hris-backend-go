@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
@@ -84,10 +83,11 @@ func (h *invitationHandlerImpl) AcceptInvitation(w http.ResponseWriter, r *http.
 
 	var req invitation.AcceptRequest
 	req.Token = token
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.BadRequest(w, "Invalid request format", nil)
-		return
-	}
+	req.UserID = userID
+	// if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// 	response.BadRequest(w, "Invalid request format", nil)
+	// 	return
+	// }
 
 	if err := req.Validate(); err != nil {
 		response.HandleError(w, err)
