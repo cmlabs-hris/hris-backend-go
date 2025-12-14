@@ -61,6 +61,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 			r.Post("/refresh", authHandler.RefreshToken)
 			r.Post("/logout", authHandler.Logout)
 			r.Post("/forgot-password", authHandler.ForgotPassword)
+			r.Post("/reset-password", authHandler.ResetPassword)
 			r.Post("/verify-email", authHandler.VerifyEmail)
 			r.Route("/oauth/callback", func(r chi.Router) {
 				r.Get("/google", authHandler.OAuthCallbackGoogle)

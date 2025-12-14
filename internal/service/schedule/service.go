@@ -621,6 +621,18 @@ func (s *scheduleServiceImpl) ListWorkSchedules(ctx context.Context, filter sche
 
 	}
 
+	// Handle response for "all" vs paginated
+	if filter.All {
+		return schedule.ListWorkScheduleResponse{
+			TotalCount:    totalCount,
+			Page:          1,
+			Limit:         int(totalCount),
+			TotalPages:    1,
+			Showing:       fmt.Sprintf("All %d results", totalCount),
+			WorkSchedules: workScheduleResponses,
+		}, nil
+	}
+
 	// Calculate pagination metadata
 	totalPages := int(math.Ceil(float64(totalCount) / float64(filter.Limit)))
 

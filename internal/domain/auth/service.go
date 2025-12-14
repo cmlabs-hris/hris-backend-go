@@ -12,6 +12,7 @@ type AuthService interface {
 	OAuthCallbackGoogle(ctx context.Context) (TokenResponse, error)
 	Logout(ctx context.Context, token string) error
 	RefreshToken(ctx context.Context, req RefreshTokenRequest) (AccessTokenResponse, error)
-	ForgotPassword(ctx context.Context, req RefreshTokenRequest) error
+	ForgotPassword(ctx context.Context, req ForgotPasswordRequest, ipAddress string) error
+	ResetPassword(ctx context.Context, req ResetPasswordRequest) error
 	VerifyEmail(ctx context.Context, req VerifyEmailRequest) error
 }

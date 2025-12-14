@@ -9,6 +9,7 @@ type EmployeeWithDetails struct {
 	PositionName     *string
 	GradeName        *string
 	BranchName       *string
+	Email            *string
 }
 
 type EmployeeRepository interface {

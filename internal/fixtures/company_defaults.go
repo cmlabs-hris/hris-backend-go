@@ -75,14 +75,13 @@ func (s *SeededDataIDs) GetOwnerDefaults() (positionID, gradeID, branchID, workS
 // GetDefaultPositions returns standard job positions for a new company
 func GetDefaultPositions(companyID string) []position.Position {
 	return []position.Position{
-		{CompanyID: companyID, Name: "Director"},
-		{CompanyID: companyID, Name: "Manager"},
-		{CompanyID: companyID, Name: "Supervisor"},
-		{CompanyID: companyID, Name: "Team Lead"},
-		{CompanyID: companyID, Name: "Senior Staff"},
-		{CompanyID: companyID, Name: "Staff"},
-		{CompanyID: companyID, Name: "Junior Staff"},
-		{CompanyID: companyID, Name: "Intern"},
+		{CompanyID: companyID, Name: "Backend Engineer"},
+		{CompanyID: companyID, Name: "Frontend Engineer"},
+		{CompanyID: companyID, Name: "UI/UX Designer"},
+		{CompanyID: companyID, Name: "Product Manager"},
+		{CompanyID: companyID, Name: "QA Engineer"},
+		{CompanyID: companyID, Name: "DevOps Engineer"},
+		{CompanyID: companyID, Name: "Engineering"},
 	}
 }
 
@@ -93,12 +92,11 @@ func GetDefaultPositions(companyID string) []position.Position {
 // GetDefaultGrades returns standard employee grades/levels for a new company
 func GetDefaultGrades(companyID string) []grade.Grade {
 	return []grade.Grade{
-		{CompanyID: companyID, Name: "Executive"},
-		{CompanyID: companyID, Name: "Senior"},
-		{CompanyID: companyID, Name: "Mid-Level"},
 		{CompanyID: companyID, Name: "Junior"},
-		{CompanyID: companyID, Name: "Entry Level"},
-		{CompanyID: companyID, Name: "Trainee"},
+		{CompanyID: companyID, Name: "Middle"},
+		{CompanyID: companyID, Name: "Senior"},
+		{CompanyID: companyID, Name: "Lead"},
+		{CompanyID: companyID, Name: "Principal"},
 	}
 }
 

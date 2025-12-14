@@ -162,11 +162,7 @@ func (h *employeeHandlerImpl) UpdateEmployee(w http.ResponseWriter, r *http.Requ
 	}
 	req.ID = id
 
-	// Validate request
-	if err := req.Validate(); err != nil {
-		response.HandleError(w, err)
-		return
-	}
+	// Validation is done in service layer with role-based restrictions
 
 	result, err := h.employeeService.UpdateEmployee(r.Context(), req)
 	if err != nil {

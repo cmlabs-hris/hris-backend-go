@@ -224,59 +224,106 @@ func (w *workScheduleRepositoryImpl) GetByCompanyID(ctx context.Context, company
 		sortOrder = "DESC"
 	}
 
-	// Pagination - apply to base table first, then join
-	limit := filter.Limit
-	if limit == 0 {
-		limit = 20
-	}
-	offset := (filter.Page - 1) * limit
+	var selectQuery string
 
-	// Main SELECT with subquery to paginate work_schedules first, then LEFT JOIN times and locations
-	// This ensures we get all times/locations for the paginated schedules
-	selectQuery := fmt.Sprintf(`
-		WITH paginated_schedules AS (
+	// If All flag is set, skip pagination
+	if filter.All {
+		selectQuery = fmt.Sprintf(`
+			WITH all_schedules AS (
+				SELECT 
+					ws.id,
+					ws.company_id,
+					ws.name,
+					ws.type,
+					ws.grace_period_minutes,
+					ws.created_at,
+					ws.updated_at
+				FROM work_schedules ws
+				WHERE %s
+				ORDER BY %s %s
+			)
 			SELECT 
-				ws.id,
-				ws.company_id,
-				ws.name,
-				ws.type,
-				ws.grace_period_minutes,
-				ws.created_at,
-				ws.updated_at
-			FROM work_schedules ws
-			WHERE %s
-			ORDER BY %s %s
-			LIMIT $%d OFFSET $%d
-		)
-		SELECT 
-			ps.id,
-			ps.company_id,
-			ps.name,
-			ps.type,
-			ps.grace_period_minutes,
-			ps.created_at,
-			ps.updated_at,
-			wst.id AS time_id,
-			wst.day_of_week,
-			wst.clock_in_time,
-			wst.clock_out_time,
-			wst.break_start_time,
-			wst.break_end_time,
-			wst.location_type,
-			wst.created_at AS time_created_at,
-			wst.updated_at AS time_updated_at,
-			wsl.id AS location_id,
-			wsl.location_name,
-			wsl.latitude,
-			wsl.longitude,
-			wsl.radius_meters
-		FROM paginated_schedules ps
-		LEFT JOIN work_schedule_times wst ON wst.work_schedule_id = ps.id
-		LEFT JOIN work_schedule_locations wsl ON wsl.work_schedule_id = ps.id
-		ORDER BY %s %s, wst.day_of_week ASC
-	`, baseWhere, orderByField, sortOrder, argIdx, argIdx+1, outerOrderByField, sortOrder)
+				ps.id,
+				ps.company_id,
+				ps.name,
+				ps.type,
+				ps.grace_period_minutes,
+				ps.created_at,
+				ps.updated_at,
+				wst.id AS time_id,
+				wst.day_of_week,
+				wst.clock_in_time,
+				wst.clock_out_time,
+				wst.break_start_time,
+				wst.break_end_time,
+				wst.location_type,
+				wst.created_at AS time_created_at,
+				wst.updated_at AS time_updated_at,
+				wsl.id AS location_id,
+				wsl.location_name,
+				wsl.latitude,
+				wsl.longitude,
+				wsl.radius_meters
+			FROM all_schedules ps
+			LEFT JOIN work_schedule_times wst ON wst.work_schedule_id = ps.id
+			LEFT JOIN work_schedule_locations wsl ON wsl.work_schedule_id = ps.id
+			ORDER BY %s %s, wst.day_of_week ASC
+		`, baseWhere, orderByField, sortOrder, outerOrderByField, sortOrder)
+	} else {
+		// Pagination - apply to base table first, then join
+		limit := filter.Limit
+		if limit == 0 {
+			limit = 20
+		}
+		offset := (filter.Page - 1) * limit
 
-	args = append(args, limit, offset)
+		// Main SELECT with subquery to paginate work_schedules first, then LEFT JOIN times and locations
+		// This ensures we get all times/locations for the paginated schedules
+		selectQuery = fmt.Sprintf(`
+			WITH paginated_schedules AS (
+				SELECT 
+					ws.id,
+					ws.company_id,
+					ws.name,
+					ws.type,
+					ws.grace_period_minutes,
+					ws.created_at,
+					ws.updated_at
+				FROM work_schedules ws
+				WHERE %s
+				ORDER BY %s %s
+				LIMIT $%d OFFSET $%d
+			)
+			SELECT 
+				ps.id,
+				ps.company_id,
+				ps.name,
+				ps.type,
+				ps.grace_period_minutes,
+				ps.created_at,
+				ps.updated_at,
+				wst.id AS time_id,
+				wst.day_of_week,
+				wst.clock_in_time,
+				wst.clock_out_time,
+				wst.break_start_time,
+				wst.break_end_time,
+				wst.location_type,
+				wst.created_at AS time_created_at,
+				wst.updated_at AS time_updated_at,
+				wsl.id AS location_id,
+				wsl.location_name,
+				wsl.latitude,
+				wsl.longitude,
+				wsl.radius_meters
+			FROM paginated_schedules ps
+			LEFT JOIN work_schedule_times wst ON wst.work_schedule_id = ps.id
+			LEFT JOIN work_schedule_locations wsl ON wsl.work_schedule_id = ps.id
+			ORDER BY %s %s, wst.day_of_week ASC
+		`, baseWhere, orderByField, sortOrder, argIdx, argIdx+1, outerOrderByField, sortOrder)
+
+		args = append(args, limit, offset)
+	}
 
 	// Execute query
 	rows, err := q.Query(ctx, selectQuery, args...)

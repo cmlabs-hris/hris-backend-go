@@ -264,13 +264,6 @@ func (e *employeeRepositoryImpl) Update(ctx context.Context, id string, companyI
 
 	updates := make(map[string]interface{})
 
-	if req.WorkScheduleID != nil {
-		if *req.WorkScheduleID == "" {
-			updates["work_schedule_id"] = nil
-		} else {
-			updates["work_schedule_id"] = *req.WorkScheduleID
-		}
-	}
 	if req.PositionID != nil {
 		if *req.PositionID == "" {
 			updates["position_id"] = nil
@@ -431,12 +424,14 @@ func (e *employeeRepositoryImpl) GetByIDWithDetails(ctx context.Context, id stri
 			ws.name AS work_schedule_name,
 			p.name AS position_name,
 			g.name AS grade_name,
-			b.name AS branch_name
+			b.name AS branch_name,
+			u.email
 		FROM employees e
 		LEFT JOIN work_schedules ws ON e.work_schedule_id = ws.id
 		LEFT JOIN positions p ON e.position_id = p.id
 		LEFT JOIN grades g ON e.grade_id = g.id
 		LEFT JOIN branches b ON e.branch_id = b.id
+		LEFT JOIN users u ON e.user_id = u.id
 		WHERE e.id = $1 AND e.company_id = $2 AND e.deleted_at IS NULL
 	`
 
@@ -450,6 +445,7 @@ func (e *employeeRepositoryImpl) GetByIDWithDetails(ctx context.Context, id stri
 		&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
 		&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 		&emp.WorkScheduleName, &emp.PositionName, &emp.GradeName, &emp.BranchName,
+		&emp.Email,
 	)
 	if err != nil {
 		if err == pgx.ErrNoRows {

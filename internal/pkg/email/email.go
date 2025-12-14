@@ -5,7 +5,9 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/smtp"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
 )
@@ -13,9 +15,12 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+const maxRetries = 3
+
 // EmailService defines the interface for sending emails
 type EmailService interface {
 	SendInvitation(to, employeeName, inviterName, companyName string, positionName *string, invitationLink, expiresAt string) error
+	SendPasswordReset(to, resetLink, expiresAt string) error
 }
 
 type emailServiceImpl struct {
@@ -67,9 +72,30 @@ func (s *emailServiceImpl) SendInvitation(to, employeeName, inviterName, company
 	return s.sendHTML(to, fmt.Sprintf("Undangan Bergabung ke %s", companyName), body.String())
 }
 
+type passwordResetEmailData struct {
+	ResetLink string
+	ExpiresAt string
+}
+
+// SendPasswordReset sends a password reset email to the user
+func (s *emailServiceImpl) SendPasswordReset(to, resetLink, expiresAt string) error {
+	data := passwordResetEmailData{
+		ResetLink: resetLink,
+		ExpiresAt: expiresAt,
+	}
+
+	var body bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&body, "password_reset.html", data); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return s.sendHTML(to, "Reset Password", body.String())
+}
+
 func (s *emailServiceImpl) sendHTML(to, subject, htmlBody string) error {
 	// Skip sending if SMTP is not configured
 	if s.cfg.Host == "" {
+		slog.Warn("SMTP not configured, skipping email send", "to", to, "subject", subject)
 		return nil
 	}
 
@@ -87,5 +113,28 @@ func (s *emailServiceImpl) sendHTML(to, subject, htmlBody string) error {
 	auth := smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 
-	return smtp.SendMail(addr, auth, from, []string{to}, message)
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := smtp.SendMail(addr, auth, from, []string{to}, message)
+		if err == nil {
+			slog.Info("Email sent successfully", "to", to, "subject", subject, "attempt", attempt)
+			return nil
+		}
+
+		lastErr = err
+		slog.Error("Failed to send email",
+			"to", to,
+			"subject", subject,
+			"attempt", attempt,
+			"max_retries", maxRetries,
+			"error", err,
+		)
+
+		// Wait before retrying (exponential backoff: 1s, 2s, 4s)
+		if attempt < maxRetries {
+			time.Sleep(time.Duration(1<<(attempt-1)) * time.Second)
+		}
+	}
+
+	return fmt.Errorf("failed to send email after %d attempts: %w", maxRetries, lastErr)
 }

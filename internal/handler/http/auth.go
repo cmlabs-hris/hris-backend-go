@@ -23,6 +23,7 @@ type AuthHandler interface {
 	Logout(w http.ResponseWriter, r *http.Request)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
 	ForgotPassword(w http.ResponseWriter, r *http.Request)
+	ResetPassword(w http.ResponseWriter, r *http.Request)
 	VerifyEmail(w http.ResponseWriter, r *http.Request)
 }
 
@@ -35,7 +36,65 @@ type AuthHandlerImpl struct {
 
 // ForgotPassword implements AuthHandler.
 func (a *AuthHandlerImpl) ForgotPassword(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+	var forgotPasswordReq auth.ForgotPasswordRequest
+
+	// 1. Decode JSON
+	if err := json.NewDecoder(r.Body).Decode(&forgotPasswordReq); err != nil {
+		slog.Error("ForgotPassword decode error", "error", err)
+		response.BadRequest(w, "Invalid request format", nil)
+		return
+	}
+
+	// Validate DTO
+	if err := forgotPasswordReq.Validate(); err != nil {
+		slog.Error("ForgotPassword validate error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Call service
+	ipAddress := r.RemoteAddr
+	err := a.authService.ForgotPassword(r.Context(), forgotPasswordReq, ipAddress)
+	if err != nil {
+		slog.Error("ForgotPassword service error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Success response - always return success to prevent email enumeration
+	slog.Info("Password reset request processed")
+	response.SuccessWithMessage(w, "If an account with that email exists, a password reset link has been sent", nil)
+}
+
+// ResetPassword implements AuthHandler.
+func (a *AuthHandlerImpl) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var resetPasswordReq auth.ResetPasswordRequest
+
+	// 1. Decode JSON
+	if err := json.NewDecoder(r.Body).Decode(&resetPasswordReq); err != nil {
+		slog.Error("ResetPassword decode error", "error", err)
+		response.BadRequest(w, "Invalid request format", nil)
+		return
+	}
+
+	// Validate DTO
+	if err := resetPasswordReq.Validate(); err != nil {
+		slog.Error("ResetPassword validate error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Call service
+	err := a.authService.ResetPassword(r.Context(), resetPasswordReq)
+	if err != nil {
+		slog.Error("ResetPassword service error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Success response
+	slog.Info("Password reset successfully")
+	response.SuccessWithMessage(w, "Password has been reset successfully", nil)
 }
 
 // Login implements AuthHandler.
@@ -328,7 +387,33 @@ func (a *AuthHandlerImpl) Register(w http.ResponseWriter, r *http.Request) {
 
 // VerifyEmail implements AuthHandler.
 func (a *AuthHandlerImpl) VerifyEmail(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
+	var verifyEmailReq auth.VerifyEmailRequest
+
+	// 1. Decode JSON
+	if err := json.NewDecoder(r.Body).Decode(&verifyEmailReq); err != nil {
+		slog.Error("VerifyEmail decode error", "error", err)
+		response.BadRequest(w, "Invalid request format", nil)
+		return
+	}
+
+	// Validate DTO
+	if err := verifyEmailReq.Validate(); err != nil {
+		slog.Error("VerifyEmail validate error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Call service
+	err := a.authService.VerifyEmail(r.Context(), verifyEmailReq)
+	if err != nil {
+		slog.Error("VerifyEmail service error", "error", err)
+		response.HandleError(w, err)
+		return
+	}
+
+	// Success response
+	slog.Info("Email verified successfully")
+	response.SuccessWithMessage(w, "Email has been verified successfully", nil)
 }
 
 func NewAuthHandler(jwtService jwt.Service, authService auth.AuthService, googleService oauth.GoogleService, frontendURL string) AuthHandler {

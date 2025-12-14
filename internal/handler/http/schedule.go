@@ -122,22 +122,27 @@ func (h *scheduleHandlerImpl) ListWorkSchedules(w http.ResponseWriter, r *http.R
 		filter.Type = &scheduleType
 	}
 
-	// Pagination
-	page := 1
-	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
+	// Check if requesting all records (no pagination)
+	if allStr := r.URL.Query().Get("all"); allStr == "true" {
+		filter.All = true
+	} else {
+		// Pagination (only when not fetching all)
+		page := 1
+		if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+			if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+				page = p
+			}
 		}
-	}
-	filter.Page = page
+		filter.Page = page
 
-	limit := 20
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-			limit = l
+		limit := 20
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+				limit = l
+			}
 		}
+		filter.Limit = limit
 	}
-	filter.Limit = limit
 
 	// Sorting
 	if sortBy := r.URL.Query().Get("sort_by"); sortBy != "" {

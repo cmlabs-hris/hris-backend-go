@@ -14,4 +14,7 @@ type UserRepository interface {
 	UpdateRole(ctx context.Context, req UpdateUserRoleRequest) error
 	Update(ctx context.Context, req UpdateUserRequest) error
 	UpdateCompanyAndRole(ctx context.Context, userID, companyID, role string) error
+	UpdatePassword(ctx context.Context, userID, passwordHash string) error
+	VerifyEmail(ctx context.Context, userID string) error
+	GetByEmailVerificationToken(ctx context.Context, token string) (User, error)
 }

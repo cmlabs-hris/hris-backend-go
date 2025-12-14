@@ -323,3 +323,64 @@ type AccessTokenResponse struct {
 	AccessToken          string `json:"access_token"`
 	AccessTokenExpiresIn int64  `json:"access_token_expires_in"`
 }
+
+type ResetPasswordRequest struct {
+	Token           string `json:"token"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirm_password"`
+}
+
+func (r *ResetPasswordRequest) Validate() error {
+	var errs validator.ValidationErrors
+
+	// Token
+	if validator.IsEmpty(r.Token) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "token",
+			Message: "token is required",
+		})
+	}
+	if len(r.Token) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "token",
+			Message: "token must not exceed 255 characters",
+		})
+	}
+
+	// Password
+	if validator.IsEmpty(r.Password) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password is required",
+		})
+	} else if len(r.Password) < 8 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password must be at least 8 characters",
+		})
+	} else if len(r.Password) > 255 {
+		errs = append(errs, validator.ValidationError{
+			Field:   "password",
+			Message: "password must not exceed 255 characters",
+		})
+	}
+
+	// Confirm Password
+	if validator.IsEmpty(r.ConfirmPassword) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "confirm_password",
+			Message: "confirm_password is required",
+		})
+	} else if r.ConfirmPassword != r.Password {
+		errs = append(errs, validator.ValidationError{
+			Field:   "confirm_password",
+			Message: "confirm_password must match password",
+		})
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
+
+	return nil
+}

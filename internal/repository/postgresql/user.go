@@ -326,3 +326,97 @@ func (r *userRepositoryImpl) UpdateCompanyAndRole(ctx context.Context, userID, c
 
 	return nil
 }
+
+// UpdatePassword implements user.UserRepository.
+func (r *userRepositoryImpl) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		UPDATE users
+		SET password_hash = $1, updated_at = NOW()
+		WHERE id = $2
+		RETURNING id
+	`
+
+	var updatedID string
+	err := q.QueryRow(ctx, query, passwordHash, userID).Scan(&updatedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("user not found: %w", err)
+		}
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyEmail implements user.UserRepository.
+func (r *userRepositoryImpl) VerifyEmail(ctx context.Context, userID string) error {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		UPDATE users
+		SET email_verified = true, email_verification_token = NULL, updated_at = NOW()
+		WHERE id = $1
+		RETURNING id
+	`
+
+	var updatedID string
+	err := q.QueryRow(ctx, query, userID).Scan(&updatedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("user not found: %w", err)
+		}
+		return fmt.Errorf("failed to verify email: %w", err)
+	}
+
+	return nil
+}
+
+// GetByEmailVerificationToken implements user.UserRepository.
+func (r *userRepositoryImpl) GetByEmailVerificationToken(ctx context.Context, token string) (user.User, error) {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		SELECT 
+			u.id,
+			u.company_id,
+			u.email,
+			u.password_hash,
+			u.role,
+			u.oauth_provider,
+			u.oauth_provider_id,
+			u.email_verified,
+			u.email_verification_token,
+			u.email_verification_sent_at,
+			u.created_at,
+			u.updated_at,
+			e.id AS employee_id
+		FROM users u
+		LEFT JOIN employees e ON e.user_id = u.id AND e.deleted_at IS NULL
+		WHERE u.email_verification_token = $1
+		LIMIT 1
+	`
+
+	var u user.User
+	err := q.QueryRow(ctx, query, token).Scan(
+		&u.ID,
+		&u.CompanyID,
+		&u.Email,
+		&u.PasswordHash,
+		&u.Role,
+		&u.OAuthProvider,
+		&u.OAuthProviderID,
+		&u.EmailVerified,
+		&u.EmailVerificationToken,
+		&u.EmailVerificationSentAt,
+		&u.CreatedAt,
+		&u.UpdatedAt,
+		&u.EmployeeID,
+	)
+	if err != nil {
+		return user.User{}, err
+	}
+
+	return u, nil
+}

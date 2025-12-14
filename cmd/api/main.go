@@ -47,6 +47,7 @@ func main() {
 	userRepo := postgresql.NewUserRepository(db)
 	companyRepo := postgresql.NewCompanyRepository(db)
 	JWTRepository := postgresql.NewJWTRepository(db)
+	passwordResetRepo := postgresql.NewPasswordResetRepository(db)
 	leaveTypeRepo := postgresql.NewLeaveTypeRepository(db)
 	leaveQuotaRepo := postgresql.NewLeaveQuotaRepository(db)
 	leaveRequestRepo := postgresql.NewLeaveRequestRepository(db)
@@ -95,7 +96,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize email service:", err)
 	}
-	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository)
+	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository, passwordResetRepo, employeeRepo, emailService, cfg.App.FrontendURL)
 	companyService := serviceCompany.NewCompanyService(
 		db,
 		companyRepo,

@@ -321,7 +321,7 @@ func (s *InvitationServiceImpl) notifyOnInvitationSent(ctx context.Context, req 
 		SenderID:    nil,
 		Type:        notification.TypeInvitationSent,
 		Title:       "Company Invitation",
-		Message:     fmt.Sprintf("You have been invited to join %s as %s", req.CompanyName, req.PositionName),
+		Message:     fmt.Sprintf("You have been invited to join %s as %s", req.CompanyName, *req.PositionName),
 		Data: map[string]interface{}{
 			"company_id":    req.CompanyID,
 			"company_name":  req.CompanyName,
@@ -354,7 +354,7 @@ func (s *InvitationServiceImpl) notifyManagersOnEmployeeJoined(ctx context.Conte
 			SenderID:    nil,
 			Type:        notification.TypeEmployeeJoined,
 			Title:       "New Employee Joined",
-			Message:     fmt.Sprintf("%s has joined the company as %s", employeeName, inv.PositionName),
+			Message:     fmt.Sprintf("%s has joined the company as %s", employeeName, *inv.PositionName),
 			Data: map[string]interface{}{
 				"employee_id":   inv.EmployeeID,
 				"employee_name": employeeName,

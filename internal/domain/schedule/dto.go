@@ -84,8 +84,9 @@ type WorkScheduleFilter struct {
 	CompanyID *string `json:"company_id,omitempty"` // Filter by company ID
 
 	// Pagination
-	Page  int `json:"page"`
-	Limit int `json:"limit"`
+	Page  int  `json:"page"`
+	Limit int  `json:"limit"`
+	All   bool `json:"all"` // If true, return all records without pagination
 
 	// Sorting
 	SortBy    string `json:"sort_by"`    // name, type, created_at
@@ -95,32 +96,35 @@ type WorkScheduleFilter struct {
 func (f *WorkScheduleFilter) Validate() error {
 	var errs validator.ValidationErrors
 
-	// Page validation
-	if f.Page < 0 {
-		errs = append(errs, validator.ValidationError{
-			Field:   "page",
-			Message: "page must be a positive number",
-		})
-	}
-	if f.Page == 0 {
-		f.Page = 1 // Default page
-	}
+	// Skip pagination validation when fetching all
+	if !f.All {
+		// Page validation
+		if f.Page < 0 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "page",
+				Message: "page must be a positive number",
+			})
+		}
+		if f.Page == 0 {
+			f.Page = 1 // Default page
+		}
 
-	// Limit validation
-	if f.Limit < 0 {
-		errs = append(errs, validator.ValidationError{
-			Field:   "limit",
-			Message: "limit must be a positive number",
-		})
-	}
-	if f.Limit == 0 {
-		f.Limit = 20 // Default limit
-	}
-	if f.Limit > 100 {
-		errs = append(errs, validator.ValidationError{
-			Field:   "limit",
-			Message: "limit must not exceed 100",
-		})
+		// Limit validation
+		if f.Limit < 0 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "limit",
+				Message: "limit must be a positive number",
+			})
+		}
+		if f.Limit == 0 {
+			f.Limit = 20 // Default limit
+		}
+		if f.Limit > 100 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "limit",
+				Message: "limit must not exceed 100",
+			})
+		}
 	}
 
 	// Sort validation

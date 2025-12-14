@@ -114,6 +114,7 @@ func mapEmployeeToResponse(emp employee.EmployeeWithDetails) employee.EmployeeRe
 
 	return employee.EmployeeResponse{
 		ID:                    emp.ID,
+		Email:                 emp.Email,
 		UserID:                userID,
 		CompanyID:             emp.CompanyID,
 		WorkScheduleID:        workScheduleID,
@@ -408,10 +409,6 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 
 // UpdateEmployee implements employee.EmployeeService.
 func (s *EmployeeServiceImpl) UpdateEmployee(ctx context.Context, req employee.UpdateEmployeeRequest) (employee.EmployeeResponse, error) {
-	if err := req.Validate(); err != nil {
-		return employee.EmployeeResponse{}, err
-	}
-
 	companyID, requestingEmployeeID, role, err := getClaimsFromContext(ctx)
 	if err != nil {
 		return employee.EmployeeResponse{}, err
@@ -420,6 +417,11 @@ func (s *EmployeeServiceImpl) UpdateEmployee(ctx context.Context, req employee.U
 	// Role-based access control: employees can only update their own data
 	if role == "employee" && requestingEmployeeID != req.ID {
 		return employee.EmployeeResponse{}, employee.ErrUnauthorized
+	}
+
+	// Validate with role-based field restrictions
+	if err := req.Validate(role); err != nil {
+		return employee.EmployeeResponse{}, err
 	}
 
 	// Check if employee exists

@@ -21,4 +21,14 @@ var (
 	ErrEmailAlreadyExists             = errors.New("account with this email already exists")
 	ErrGoogleAccessDeniedByUser       = errors.New("continue with google access denied by user")
 	ErrRefreshTokenCookieEmpty        = errors.New("refresh token cookie is empty")
+
+	// Password reset errors
+	ErrPasswordResetTokenNotFound = errors.New("password reset token not found")
+	ErrPasswordResetTokenExpired  = errors.New("password reset token has expired")
+	ErrPasswordResetTokenUsed     = errors.New("password reset token has already been used")
+
+	// Email verification errors
+	ErrEmailVerificationTokenNotFound = errors.New("email verification token not found")
+	ErrEmailVerificationTokenExpired  = errors.New("email verification token has expired")
+	ErrEmailAlreadyVerified           = errors.New("email is already verified")
 )

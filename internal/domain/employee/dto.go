@@ -206,7 +206,6 @@ func (r *CreateEmployeeRequest) Validate() error {
 // UpdateEmployeeRequest for updating an existing employee
 type UpdateEmployeeRequest struct {
 	ID                    string           `json:"-"`
-	WorkScheduleID        *string          `json:"work_schedule_id,omitempty"`
 	PositionID            *string          `json:"position_id,omitempty"`
 	GradeID               *string          `json:"grade_id,omitempty"`
 	BranchID              *string          `json:"branch_id,omitempty"`
@@ -230,8 +229,61 @@ type UpdateEmployeeRequest struct {
 	BaseSalary            *decimal.Decimal `json:"base_salary,omitempty"`
 }
 
-func (r *UpdateEmployeeRequest) Validate() error {
+func (r *UpdateEmployeeRequest) Validate(role string) error {
 	var errs validator.ValidationErrors
+
+	// Field-level restrictions: employees can only update specific fields
+	if role == "employee" {
+		// Check if employee is trying to update restricted fields
+		var restrictedFields []string
+
+		if r.PositionID != nil {
+			restrictedFields = append(restrictedFields, "position_id")
+		}
+		if r.GradeID != nil {
+			restrictedFields = append(restrictedFields, "grade_id")
+		}
+		if r.BranchID != nil {
+			restrictedFields = append(restrictedFields, "branch_id")
+		}
+		if r.EmployeeCode != nil {
+			restrictedFields = append(restrictedFields, "employee_code")
+		}
+		if r.FullName != nil {
+			restrictedFields = append(restrictedFields, "full_name")
+		}
+		if r.NIK != nil {
+			restrictedFields = append(restrictedFields, "nik")
+		}
+		if r.Gender != nil {
+			restrictedFields = append(restrictedFields, "gender")
+		}
+		if r.HireDate != nil {
+			restrictedFields = append(restrictedFields, "hire_date")
+		}
+		if r.ResignationDate != nil {
+			restrictedFields = append(restrictedFields, "resignation_date")
+		}
+		if r.EmploymentType != nil {
+			restrictedFields = append(restrictedFields, "employment_type")
+		}
+		if r.EmploymentStatus != nil {
+			restrictedFields = append(restrictedFields, "employment_status")
+		}
+		if r.WarningLetter != nil {
+			restrictedFields = append(restrictedFields, "warning_letter")
+		}
+		if r.BaseSalary != nil {
+			restrictedFields = append(restrictedFields, "base_salary")
+		}
+
+		if len(restrictedFields) > 0 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "restricted_fields",
+				Message: "employee cannot update the following fields: " + strings.Join(restrictedFields, ", ") + ". Only phone_number, address, place_of_birth, dob, education, and bank details can be updated",
+			})
+		}
+	}
 
 	if r.Gender != nil && *r.Gender != "" {
 		if *r.Gender != "Male" && *r.Gender != "Female" {
@@ -325,6 +377,7 @@ func (r *UpdateEmployeeRequest) Validate() error {
 // EmployeeResponse for returning employee data with joined names
 type EmployeeResponse struct {
 	ID                    string           `json:"id"`
+	Email                 *string          `json:"email,omitempty"`
 	UserID                *string          `json:"user_id,omitempty"`
 	CompanyID             string           `json:"company_id"`
 	WorkScheduleID        *string          `json:"work_schedule_id,omitempty"`
