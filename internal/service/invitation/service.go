@@ -141,7 +141,6 @@ func (s *InvitationServiceImpl) ListMyInvitations(ctx context.Context, userEmail
 	results := make([]invitation.MyInvitationResponse, 0, len(invitations))
 	for _, inv := range invitations {
 
-		fmt.Println(*inv.CompanyLogo)
 		if inv.CompanyLogo != nil && *inv.CompanyLogo != "" {
 			fullURL, err := s.fileService.GetFileURL(ctx, *inv.CompanyLogo, 0)
 			if err != nil {
