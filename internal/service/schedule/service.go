@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
@@ -23,6 +24,7 @@ type scheduleServiceImpl struct {
 	workScheduleLocationRepo   schedule.WorkScheduleLocationRepository
 	employeeScheduleAssignRepo schedule.EmployeeScheduleAssignmentRepository
 	employeeRepo               employee.EmployeeRepository
+	notificationService        notification.Service
 }
 
 // AssignSchedule implements schedule.ScheduleService.
@@ -93,6 +95,9 @@ func (s *scheduleServiceImpl) AssignSchedule(ctx context.Context, req schedule.A
 		response.CreatedAt = &createdAt
 		response.UpdatedAt = &updatedAt
 	}
+
+	// Notify employee about schedule assignment/update
+	go s.notifyEmployeeOnScheduleUpdated(ctx, req.EmployeeID, req.WorkScheduleID, companyID, req.StartDate)
 
 	return response, nil
 }
@@ -813,6 +818,7 @@ func NewScheduleService(
 	workScheduleLocationRepo schedule.WorkScheduleLocationRepository,
 	employeeScheduleAssignRepo schedule.EmployeeScheduleAssignmentRepository,
 	employeeRepo employee.EmployeeRepository,
+	notificationService notification.Service,
 ) schedule.ScheduleService {
 	return &scheduleServiceImpl{
 		db:                         db,
@@ -821,6 +827,7 @@ func NewScheduleService(
 		workScheduleLocationRepo:   workScheduleLocationRepo,
 		employeeScheduleAssignRepo: employeeScheduleAssignRepo,
 		employeeRepo:               employeeRepo,
+		notificationService:        notificationService,
 	}
 }
 
@@ -1041,4 +1048,38 @@ func (s *scheduleServiceImpl) calculateShowingText(page, limit int, total int64)
 	}
 
 	return fmt.Sprintf("%d-%d of %d results", start, end, total)
+}
+
+// notifyEmployeeOnScheduleUpdated sends notification to employee when their schedule is assigned/updated
+func (s *scheduleServiceImpl) notifyEmployeeOnScheduleUpdated(ctx context.Context, employeeID, workScheduleID, companyID, startDate string) {
+	if s.notificationService == nil {
+		return
+	}
+
+	// Get employee user ID
+	emp, err := s.employeeRepo.GetByID(ctx, employeeID)
+	if err != nil || emp.UserID == nil {
+		return
+	}
+
+	// Get work schedule name
+	ws, err := s.workScheduleRepo.GetByID(ctx, workScheduleID, companyID)
+	if err != nil {
+		return
+	}
+
+	_ = s.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+		CompanyID:   companyID,
+		RecipientID: *emp.UserID,
+		SenderID:    nil,
+		Type:        notification.TypeScheduleUpdated,
+		Title:       "Schedule Updated",
+		Message:     fmt.Sprintf("Your work schedule has been updated to '%s' starting from %s", ws.Name, startDate),
+		Data: map[string]interface{}{
+			"employee_id":      employeeID,
+			"work_schedule_id": workScheduleID,
+			"schedule_name":    ws.Name,
+			"start_date":       startDate,
+		},
+	})
 }

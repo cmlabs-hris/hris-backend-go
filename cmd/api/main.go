@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
 	appHTTP "github.com/cmlabs-hris/hris-backend-go/internal/handler/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/sse"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/storage"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	attendanceService "github.com/cmlabs-hris/hris-backend-go/internal/service/attendance"
@@ -23,6 +25,7 @@ import (
 	invitationService "github.com/cmlabs-hris/hris-backend-go/internal/service/invitation"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/leave"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
+	notificationService "github.com/cmlabs-hris/hris-backend-go/internal/service/notification"
 	payrollService "github.com/cmlabs-hris/hris-backend-go/internal/service/payroll"
 	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
 )
@@ -60,6 +63,10 @@ func main() {
 	payrollRepo := postgresql.NewPayrollRepository(db)
 	dashboardRepo := postgresql.NewDashboardRepository(db)
 	empDashboardRepo := postgresql.NewEmployeeDashboardRepository(db)
+	notificationRepo := postgresql.NewNotificationRepository(db)
+
+	// Initialize SSE Hub for real-time notifications
+	sseHub := sse.NewHub()
 
 	JWTService := jwt.NewJWTService(cfg.JWT.Secret, cfg.JWT.AccessExpiration, cfg.JWT.RefreshExpiration)
 	GoogleService := oauth.NewGoogleService(cfg.OAuth2Google.ClientID, cfg.OAuth2Google.ClientSecret, cfg.OAuth2Google.RedirectURL, cfg.OAuth2Google.Scopes)
@@ -103,8 +110,14 @@ func main() {
 		employeeRepo,
 		quotaService,
 	)
-	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, attendanceRepo, quotaService, requestService, fileService)
 	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
+	notificationSvc := notificationService.NewNotificationService(notificationRepo, sseHub, notificationService.Config{
+		BatchSize:     100,
+		FlushInterval: 5 * time.Second,
+		WorkerCount:   2,
+		QueueSize:     1000,
+	})
+	leaveService := leave.NewLeaveService(db, leaveTypeRepo, leaveQuotaRepo, leaveRequestRepo, employeeRepo, attendanceRepo, quotaService, requestService, fileService, notificationSvc)
 	scheduleService := scheduleService.NewScheduleService(
 		db,
 		workScheduleRepo,
@@ -112,6 +125,7 @@ func main() {
 		workScheduleLocationRepo,
 		employeeScheduleAssignmentRepo,
 		employeeRepo,
+		notificationSvc,
 	)
 	attendanceService := attendanceService.NewAttendanceService(
 		db,
@@ -121,6 +135,7 @@ func main() {
 		workScheduleTimeRepo,
 		branchRepo,
 		fileService,
+		notificationSvc,
 	)
 	invitationService := invitationService.NewInvitationService(
 		db,
@@ -130,6 +145,7 @@ func main() {
 		emailService,
 		fileService,
 		cfg.Invitation,
+		notificationSvc,
 	)
 	employeeService := employeeService.NewEmployeeService(
 		db,
@@ -139,7 +155,7 @@ func main() {
 		invitationService,
 		quotaService,
 	)
-	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo)
+	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo, notificationSvc)
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
 	empDashboardSvc := employeeDashboardService.NewEmployeeDashboardService(empDashboardRepo)
 
@@ -154,6 +170,7 @@ func main() {
 	payrollHandler := appHTTP.NewPayrollHandler(payrollSvc)
 	dashboardHandler := appHTTP.NewDashboardHandler(dashboardSvc)
 	empDashboardHandler := appHTTP.NewEmployeeDashboardHandler(empDashboardSvc)
+	notificationHandler := appHTTP.NewNotificationHandler(notificationSvc, JWTService)
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -168,6 +185,7 @@ func main() {
 		payrollHandler,
 		dashboardHandler,
 		empDashboardHandler,
+		notificationHandler,
 		cfg.Storage.BasePath,
 	)
 

@@ -13,6 +13,8 @@ import (
 type Service interface {
 	GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
+	GenerateSSEToken(userID string) (token string, expiresIn int, err error)
+	ValidateSSEToken(tokenString string) (userID string, err error)
 	JWTAuth() *jwtauth.JWTAuth
 	RefreshTokenCookie(token string, expiresAt int64) *http.Cookie
 	RevokeToken(token string)
@@ -106,4 +108,49 @@ func (j *JWTService) returnValueOrNil(value *string) interface{} {
 	} else {
 		return *value
 	}
+}
+
+// GenerateSSEToken generates a short-lived token for SSE connections
+func (j *JWTService) GenerateSSEToken(userID string) (token string, expiresIn int, err error) {
+	// SSE tokens are short-lived (5 minutes)
+	expiresIn = 300 // 5 minutes in seconds
+	expiresAt := time.Now().Add(5 * time.Minute).Unix()
+
+	_, tokenString, err := j.tokenAuth.Encode(map[string]interface{}{
+		"user_id": userID,
+		"type":    "sse",
+		"exp":     expiresAt,
+	})
+	if err != nil {
+		return "", 0, err
+	}
+
+	return tokenString, expiresIn, nil
+}
+
+// ValidateSSEToken validates an SSE token and returns the user ID
+func (j *JWTService) ValidateSSEToken(tokenString string) (userID string, err error) {
+	token, err := j.tokenAuth.Decode(tokenString)
+	if err != nil {
+		return "", err
+	}
+
+	// Check token type
+	tokenType, ok := token.Get("type")
+	if !ok || tokenType != "sse" {
+		return "", jwt.ErrInvalidJWT()
+	}
+
+	// Get user ID
+	userIDVal, ok := token.Get("user_id")
+	if !ok {
+		return "", jwt.ErrInvalidJWT()
+	}
+
+	userID, ok = userIDVal.(string)
+	if !ok {
+		return "", jwt.ErrInvalidJWT()
+	}
+
+	return userID, nil
 }

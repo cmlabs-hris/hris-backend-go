@@ -10,6 +10,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/attendance"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
@@ -24,7 +25,8 @@ type AttendanceServiceImpl struct {
 	schedule.WorkScheduleRepository
 	schedule.WorkScheduleTimeRepository
 	branch.BranchRepository
-	fileService file.FileService
+	fileService         file.FileService
+	notificationService notification.Service
 }
 
 // timePtrToString safely converts a *time.Time to a string.
@@ -185,6 +187,9 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to create attendance record: %w", err)
 	}
 
+	// Send notification to managers
+	go a.notifyManagersOnClockIn(ctx, companyID, employeeID, attendanceResult.ID, nowLocal)
+
 	return attendance.AttendanceResponse{
 		ID:                attendanceResult.ID,
 		EmployeeID:        attendanceResult.EmployeeID,
@@ -307,6 +312,9 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 		}
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to update attendance record: %w", err)
 	}
+
+	// Send notification to managers
+	go a.notifyManagersOnClockOut(ctx, companyID, employeeID, attendanceData.ID, nowLocal)
 
 	return attendance.AttendanceResponse{
 		ID:                attendanceData.ID,
@@ -753,6 +761,92 @@ func (a *AttendanceServiceImpl) DeleteAttendance(ctx context.Context, id string)
 	return nil
 }
 
+// notifyManagersOnClockIn sends notifications to all managers when an employee clocks in
+func (a *AttendanceServiceImpl) notifyManagersOnClockIn(ctx context.Context, companyID, employeeID, attendanceID string, clockInTime time.Time) {
+	// Skip if notification service is not configured
+	if a.notificationService == nil {
+		return
+	}
+
+	// Get employee info
+	emp, err := a.EmployeeRepository.GetByID(ctx, employeeID)
+	if err != nil {
+		return
+	}
+
+	employeeName := emp.FullName
+
+	// Get managers of the company
+	managers, err := a.EmployeeRepository.GetManagersByCompanyID(ctx, companyID)
+	if err != nil {
+		return
+	}
+
+	// Queue notifications to all managers
+	for _, manager := range managers {
+		if manager.UserID == nil {
+			continue
+		}
+
+		_ = a.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+			CompanyID:   companyID,
+			RecipientID: *manager.UserID,
+			SenderID:    emp.UserID,
+			Type:        notification.TypeAttendanceClockIn,
+			Title:       "Employee Clock In",
+			Message:     fmt.Sprintf("%s has clocked in at %s", employeeName, clockInTime.Format("15:04")),
+			Data: map[string]interface{}{
+				"employee_id":   employeeID,
+				"attendance_id": attendanceID,
+				"clock_in_time": clockInTime.Format(time.RFC3339),
+			},
+		})
+	}
+}
+
+// notifyManagersOnClockOut sends notifications to all managers when an employee clocks out
+func (a *AttendanceServiceImpl) notifyManagersOnClockOut(ctx context.Context, companyID, employeeID, attendanceID string, clockOutTime time.Time) {
+	// Skip if notification service is not configured
+	if a.notificationService == nil {
+		return
+	}
+
+	// Get employee info
+	emp, err := a.EmployeeRepository.GetByID(ctx, employeeID)
+	if err != nil {
+		return
+	}
+
+	employeeName := emp.FullName
+
+	// Get managers of the company
+	managers, err := a.EmployeeRepository.GetManagersByCompanyID(ctx, companyID)
+	if err != nil {
+		return
+	}
+
+	// Queue notifications to all managers
+	for _, manager := range managers {
+		if manager.UserID == nil {
+			continue
+		}
+
+		_ = a.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+			CompanyID:   companyID,
+			RecipientID: *manager.UserID,
+			SenderID:    emp.UserID,
+			Type:        notification.TypeAttendanceClockOut,
+			Title:       "Employee Clock Out",
+			Message:     fmt.Sprintf("%s has clocked out at %s", employeeName, clockOutTime.Format("15:04")),
+			Data: map[string]interface{}{
+				"employee_id":    employeeID,
+				"attendance_id":  attendanceID,
+				"clock_out_time": clockOutTime.Format(time.RFC3339),
+			},
+		})
+	}
+}
+
 func NewAttendanceService(
 	db *database.DB,
 	attendanceRepo attendance.AttendanceRepository,
@@ -761,6 +855,7 @@ func NewAttendanceService(
 	workScheduleTimeRepo schedule.WorkScheduleTimeRepository,
 	branchRepo branch.BranchRepository,
 	fileService file.FileService,
+	notificationService notification.Service,
 ) attendance.AttendanceService {
 	return &AttendanceServiceImpl{
 		db:                         db,
@@ -770,5 +865,6 @@ func NewAttendanceService(
 		WorkScheduleTimeRepository: workScheduleTimeRepo,
 		BranchRepository:           branchRepo,
 		fileService:                fileService,
+		notificationService:        notificationService,
 	}
 }

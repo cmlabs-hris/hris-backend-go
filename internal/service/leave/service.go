@@ -12,6 +12,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/attendance"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/leave"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
@@ -27,9 +28,10 @@ type LeaveServiceImpl struct {
 	leave.LeaveRequestRepository
 	employee.EmployeeRepository
 	attendance.AttendanceRepository
-	quotaService   *QuotaService
-	requestService *RequestService
-	fileService    file.FileService
+	quotaService        *QuotaService
+	requestService      *RequestService
+	fileService         file.FileService
+	notificationService notification.Service
 }
 
 // GetLeaveRequest implements leave.LeaveService.
@@ -394,25 +396,35 @@ func (l *LeaveServiceImpl) ApproveLeaveRequest(ctx context.Context, requestID st
 
 	companyID, _ := claims["company_id"].(string)
 
-	return postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
+	var request leave.LeaveRequest
+	err = postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		request, err := l.requestService.Approve(txCtx, requestID, approverID)
-		if err != nil {
-			return fmt.Errorf("failed to approve leave request: %w", err)
+		var txErr error
+		request, txErr = l.requestService.Approve(txCtx, requestID, approverID)
+		if txErr != nil {
+			return fmt.Errorf("failed to approve leave request: %w", txErr)
 		}
 
-		if err := l.quotaService.MovePendingToUsed(ctx, request.EmployeeID, request.LeaveTypeID, request.WorkingDays); err != nil {
-			return fmt.Errorf("failed to move pending to used quota: %w", err)
+		if txErr = l.quotaService.MovePendingToUsed(ctx, request.EmployeeID, request.LeaveTypeID, request.WorkingDays); txErr != nil {
+			return fmt.Errorf("failed to move pending to used quota: %w", txErr)
 		}
 
 		// Create attendance records for each day of the leave period
-		if err := l.createLeaveAttendanceRecords(txCtx, request, companyID, approverID); err != nil {
-			return fmt.Errorf("failed to create leave attendance records: %w", err)
+		if txErr = l.createLeaveAttendanceRecords(txCtx, request, companyID, approverID); txErr != nil {
+			return fmt.Errorf("failed to create leave attendance records: %w", txErr)
 		}
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Notify employee that their leave request was approved
+	go l.notifyEmployeeOnLeaveApproved(ctx, request, companyID, approverID)
+
+	return nil
 }
 
 // createLeaveAttendanceRecords creates attendance records with status as leave type name for each day in the leave period
@@ -547,6 +559,9 @@ func (l *LeaveServiceImpl) CreateLeaveRequest(ctx context.Context, req leave.Cre
 	if err != nil {
 		return leave.LeaveRequestResponse{}, err
 	}
+
+	// Notify managers about new leave request
+	go l.notifyManagersOnLeaveRequest(ctx, requestResponse)
 
 	return requestResponse, nil
 }
@@ -782,21 +797,33 @@ func (l *LeaveServiceImpl) RejectLeaveRequest(ctx context.Context, req leave.Rej
 		return fmt.Errorf("user_id claim is missing or invalid")
 	}
 
-	return postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
+	companyID, _ := claims["company_id"].(string)
+
+	var request leave.LeaveRequest
+	err = postgresql.WithTransaction(ctx, l.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		request, err := l.requestService.Reject(ctx, req.RequestID, *req.Reason, approverID)
-		if err != nil {
-			return err
+		var txErr error
+		request, txErr = l.requestService.Reject(ctx, req.RequestID, *req.Reason, approverID)
+		if txErr != nil {
+			return txErr
 		}
 
 		// Release reserved quota
-		err = l.quotaService.ReleaseQuota(txCtx, request.EmployeeID, request.LeaveTypeID, request.WorkingDays)
-		if err != nil {
-			return err
+		txErr = l.quotaService.ReleaseQuota(txCtx, request.EmployeeID, request.LeaveTypeID, request.WorkingDays)
+		if txErr != nil {
+			return txErr
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Notify employee that their leave request was rejected
+	go l.notifyEmployeeOnLeaveRejected(ctx, request, companyID, approverID, *req.Reason)
+
+	return nil
 }
 
 // UpdateLeaveQuota implements leave.LeaveService.
@@ -815,6 +842,117 @@ func (l *LeaveServiceImpl) UpdateLeaveType(ctx context.Context, req leave.Update
 	return nil
 }
 
+// notifyManagersOnLeaveRequest sends notifications to all managers when a leave request is submitted
+func (l *LeaveServiceImpl) notifyManagersOnLeaveRequest(ctx context.Context, req leave.LeaveRequestResponse) {
+	if l.notificationService == nil {
+		return
+	}
+
+	// Get employee to find companyID and userID
+	emp, err := l.EmployeeRepository.GetByID(ctx, req.EmployeeID)
+	if err != nil {
+		return
+	}
+
+	// Get managers of the company
+	managers, err := l.EmployeeRepository.GetManagersByCompanyID(ctx, emp.CompanyID)
+	if err != nil {
+		return
+	}
+
+	for _, manager := range managers {
+		if manager.UserID == nil {
+			continue
+		}
+
+		_ = l.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+			CompanyID:   emp.CompanyID,
+			RecipientID: *manager.UserID,
+			SenderID:    emp.UserID,
+			Type:        notification.TypeLeaveRequest,
+			Title:       "New Leave Request",
+			Message:     fmt.Sprintf("%s submitted a %s request from %s to %s", req.EmployeeName, req.LeaveTypeName, req.StartDate.Format("02 Jan 2006"), req.EndDate.Format("02 Jan 2006")),
+			Data: map[string]interface{}{
+				"employee_id":     req.EmployeeID,
+				"leave_request_id": req.ID,
+				"leave_type":      req.LeaveTypeName,
+				"start_date":      req.StartDate.Format("2006-01-02"),
+				"end_date":        req.EndDate.Format("2006-01-02"),
+				"total_days":      req.TotalDays,
+			},
+		})
+	}
+}
+
+// notifyEmployeeOnLeaveApproved sends notification to employee when leave is approved
+func (l *LeaveServiceImpl) notifyEmployeeOnLeaveApproved(ctx context.Context, req leave.LeaveRequest, companyID, approverID string) {
+	if l.notificationService == nil {
+		return
+	}
+
+	// Get employee user ID
+	emp, err := l.EmployeeRepository.GetByID(ctx, req.EmployeeID)
+	if err != nil || emp.UserID == nil {
+		return
+	}
+
+	// Get leave type name
+	leaveType, err := l.LeaveTypeRepository.GetByID(ctx, req.LeaveTypeID)
+	if err != nil {
+		return
+	}
+
+	_ = l.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+		CompanyID:   companyID,
+		RecipientID: *emp.UserID,
+		SenderID:    &approverID,
+		Type:        notification.TypeLeaveApproved,
+		Title:       "Leave Request Approved",
+		Message:     fmt.Sprintf("Your %s request from %s to %s has been approved", leaveType.Name, req.StartDate.Format("02 Jan 2006"), req.EndDate.Format("02 Jan 2006")),
+		Data: map[string]interface{}{
+			"leave_request_id": req.ID,
+			"leave_type":       leaveType.Name,
+			"start_date":       req.StartDate.Format("2006-01-02"),
+			"end_date":         req.EndDate.Format("2006-01-02"),
+		},
+	})
+}
+
+// notifyEmployeeOnLeaveRejected sends notification to employee when leave is rejected
+func (l *LeaveServiceImpl) notifyEmployeeOnLeaveRejected(ctx context.Context, req leave.LeaveRequest, companyID, approverID, reason string) {
+	if l.notificationService == nil {
+		return
+	}
+
+	// Get employee user ID
+	emp, err := l.EmployeeRepository.GetByID(ctx, req.EmployeeID)
+	if err != nil || emp.UserID == nil {
+		return
+	}
+
+	// Get leave type name
+	leaveType, err := l.LeaveTypeRepository.GetByID(ctx, req.LeaveTypeID)
+	if err != nil {
+		return
+	}
+
+	_ = l.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+		CompanyID:   companyID,
+		RecipientID: *emp.UserID,
+		SenderID:    &approverID,
+		Type:        notification.TypeLeaveRejected,
+		Title:       "Leave Request Rejected",
+		Message:     fmt.Sprintf("Your %s request from %s to %s has been rejected. Reason: %s", leaveType.Name, req.StartDate.Format("02 Jan 2006"), req.EndDate.Format("02 Jan 2006"), reason),
+		Data: map[string]interface{}{
+			"leave_request_id": req.ID,
+			"leave_type":       leaveType.Name,
+			"start_date":       req.StartDate.Format("2006-01-02"),
+			"end_date":         req.EndDate.Format("2006-01-02"),
+			"reason":           reason,
+		},
+	})
+}
+
 func NewLeaveService(
 	db *database.DB,
 	leaveTypeRepo leave.LeaveTypeRepository,
@@ -825,6 +963,7 @@ func NewLeaveService(
 	quotaService *QuotaService,
 	requestService *RequestService,
 	fileService file.FileService,
+	notificationService notification.Service,
 ) leave.LeaveService {
 	return &LeaveServiceImpl{
 		db:                     db,
@@ -836,5 +975,6 @@ func NewLeaveService(
 		quotaService:           quotaService,
 		requestService:         requestService,
 		fileService:            fileService,
+		notificationService:    notificationService,
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/payroll"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/go-chi/jwtauth/v5"
@@ -15,20 +16,23 @@ import (
 )
 
 type PayrollServiceImpl struct {
-	db           *database.DB
-	payrollRepo  payroll.PayrollRepository
-	employeeRepo employee.EmployeeRepository
+	db                  *database.DB
+	payrollRepo         payroll.PayrollRepository
+	employeeRepo        employee.EmployeeRepository
+	notificationService notification.Service
 }
 
 func NewPayrollService(
 	db *database.DB,
 	payrollRepo payroll.PayrollRepository,
 	employeeRepo employee.EmployeeRepository,
+	notificationService notification.Service,
 ) payroll.PayrollService {
 	return &PayrollServiceImpl{
-		db:           db,
-		payrollRepo:  payrollRepo,
-		employeeRepo: employeeRepo,
+		db:                  db,
+		payrollRepo:         payrollRepo,
+		employeeRepo:        employeeRepo,
+		notificationService: notificationService,
 	}
 }
 
@@ -545,6 +549,9 @@ func (s *PayrollServiceImpl) GeneratePayroll(ctx context.Context, req payroll.Ge
 		records = append(records, created)
 	}
 
+	// Notify employees about generated payroll
+	go s.notifyEmployeesOnPayrollGenerated(ctx, records, companyID, req.PeriodMonth, req.PeriodYear)
+
 	return mapToRecordResponses(records), nil
 }
 
@@ -680,6 +687,39 @@ func mapToRecordResponses(records []payroll.PayrollRecord) []payroll.PayrollReco
 		result = append(result, mapToRecordResponse(r))
 	}
 	return result
+}
+
+// notifyEmployeesOnPayrollGenerated sends notifications to all employees when their payroll is generated
+func (s *PayrollServiceImpl) notifyEmployeesOnPayrollGenerated(ctx context.Context, records []payroll.PayrollRecord, companyID string, periodMonth, periodYear int) {
+	if s.notificationService == nil {
+		return
+	}
+
+	monthNames := []string{"", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+	periodStr := fmt.Sprintf("%s %d", monthNames[periodMonth], periodYear)
+
+	for _, record := range records {
+		// Get employee user ID
+		emp, err := s.employeeRepo.GetByID(ctx, record.EmployeeID)
+		if err != nil || emp.UserID == nil {
+			continue
+		}
+
+		_ = s.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+			CompanyID:   companyID,
+			RecipientID: *emp.UserID,
+			SenderID:    nil,
+			Type:        notification.TypePayrollGenerated,
+			Title:       "Payroll Generated",
+			Message:     fmt.Sprintf("Your payroll for %s has been generated. Net salary: Rp %s", periodStr, record.NetSalary.StringFixed(0)),
+			Data: map[string]interface{}{
+				"payroll_id":   record.ID,
+				"period_month": periodMonth,
+				"period_year":  periodYear,
+				"net_salary":   record.NetSalary.String(),
+			},
+		})
+	}
 }
 
 // Ensure pgx.ErrNoRows is handled properly

@@ -8,6 +8,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
@@ -18,13 +19,14 @@ import (
 )
 
 type InvitationServiceImpl struct {
-	db             *database.DB
-	invitationRepo invitation.InvitationRepository
-	employeeRepo   employee.EmployeeRepository
-	userRepo       user.UserRepository
-	emailService   email.EmailService
-	fileService    file.FileService
-	config         config.InvitationConfig
+	db                  *database.DB
+	invitationRepo      invitation.InvitationRepository
+	employeeRepo        employee.EmployeeRepository
+	userRepo            user.UserRepository
+	emailService        email.EmailService
+	fileService         file.FileService
+	config              config.InvitationConfig
+	notificationService notification.Service
 }
 
 // NewInvitationService creates a new invitation service instance
@@ -36,15 +38,17 @@ func NewInvitationService(
 	emailService email.EmailService,
 	fileService file.FileService,
 	invitationConfig config.InvitationConfig,
+	notificationService notification.Service,
 ) invitation.InvitationService {
 	return &InvitationServiceImpl{
-		db:             db,
-		invitationRepo: invitationRepo,
-		employeeRepo:   employeeRepo,
-		userRepo:       userRepo,
-		emailService:   emailService,
-		fileService:    fileService,
-		config:         invitationConfig,
+		db:                  db,
+		invitationRepo:      invitationRepo,
+		employeeRepo:        employeeRepo,
+		userRepo:            userRepo,
+		emailService:        emailService,
+		fileService:         fileService,
+		config:              invitationConfig,
+		notificationService: notificationService,
 	}
 }
 
@@ -91,6 +95,9 @@ func (s *InvitationServiceImpl) CreateAndSend(ctx context.Context, req invitatio
 	if err != nil {
 		return invitation.Invitation{}, fmt.Errorf("failed to send invitation email: %w", err)
 	}
+
+	// Also send push notification if user already has an account
+	go s.notifyOnInvitationSent(ctx, req)
 
 	return created, nil
 }
@@ -225,6 +232,9 @@ func (s *InvitationServiceImpl) Accept(ctx context.Context, token, userID, userE
 		return invitation.AcceptResponse{}, err
 	}
 
+	// Notify managers that a new employee has joined
+	go s.notifyManagersOnEmployeeJoined(ctx, inv, emp.FullName)
+
 	return invitation.AcceptResponse{
 		Message:     "Invitation accepted successfully",
 		CompanyID:   inv.CompanyID,
@@ -291,4 +301,66 @@ func (s *InvitationServiceImpl) Revoke(ctx context.Context, employeeID, companyI
 // ExistsPendingByEmail implements invitation.InvitationService.
 func (s *InvitationServiceImpl) ExistsPendingByEmail(ctx context.Context, email, companyID string) (bool, error) {
 	return s.invitationRepo.ExistsPendingByEmail(ctx, email, companyID)
+}
+
+// notifyOnInvitationSent sends push notification to user if they already have an account
+func (s *InvitationServiceImpl) notifyOnInvitationSent(ctx context.Context, req invitation.CreateRequest) {
+	if s.notificationService == nil {
+		return
+	}
+
+	// Try to find user by email
+	userData, err := s.userRepo.GetByEmail(ctx, req.Email)
+	if err != nil {
+		// User doesn't exist yet, they'll get the email
+		return
+	}
+
+	_ = s.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+		CompanyID:   req.CompanyID,
+		RecipientID: userData.ID,
+		SenderID:    nil,
+		Type:        notification.TypeInvitationSent,
+		Title:       "Company Invitation",
+		Message:     fmt.Sprintf("You have been invited to join %s as %s", req.CompanyName, req.PositionName),
+		Data: map[string]interface{}{
+			"company_id":    req.CompanyID,
+			"company_name":  req.CompanyName,
+			"position_name": req.PositionName,
+			"employee_id":   req.EmployeeID,
+		},
+	})
+}
+
+// notifyManagersOnEmployeeJoined sends notifications to all managers when a new employee joins
+func (s *InvitationServiceImpl) notifyManagersOnEmployeeJoined(ctx context.Context, inv invitation.InvitationWithDetails, employeeName string) {
+	if s.notificationService == nil {
+		return
+	}
+
+	// Get managers of the company
+	managers, err := s.employeeRepo.GetManagersByCompanyID(ctx, inv.CompanyID)
+	if err != nil {
+		return
+	}
+
+	for _, manager := range managers {
+		if manager.UserID == nil {
+			continue
+		}
+
+		_ = s.notificationService.QueueNotification(ctx, notification.CreateNotificationRequest{
+			CompanyID:   inv.CompanyID,
+			RecipientID: *manager.UserID,
+			SenderID:    nil,
+			Type:        notification.TypeEmployeeJoined,
+			Title:       "New Employee Joined",
+			Message:     fmt.Sprintf("%s has joined the company as %s", employeeName, inv.PositionName),
+			Data: map[string]interface{}{
+				"employee_id":   inv.EmployeeID,
+				"employee_name": employeeName,
+				"position_name": inv.PositionName,
+			},
+		})
+	}
 }

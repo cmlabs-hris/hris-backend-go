@@ -32,4 +32,7 @@ type EmployeeRepository interface {
 	SoftDelete(ctx context.Context, id string, companyID string) error
 	UpdateAvatar(ctx context.Context, id string, companyID string, avatarURL string) error
 	Inactivate(ctx context.Context, id string, companyID string, resignationDate string) error
+
+	// Notification-related
+	GetManagersByCompanyID(ctx context.Context, companyID string) ([]Employee, error)
 }

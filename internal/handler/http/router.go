@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -117,7 +117,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 
 				r.Route("/quota", func(r chi.Router) {
 					r.Group(func(r chi.Router) {
-						r.Use(middleware.RequireOwner)
+						r.Use(middleware.RequireManager)
 						r.Get("/", leaveHandler.ListQuota)
 						// r.Post("/", leaveHandler.SetQuota)
 						r.Post("/adjust", leaveHandler.AdjustQuota)
@@ -338,6 +338,26 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Get("/leave-summary", employeeDashboardHandler.GetLeaveSummary)
 					r.Get("/work-hours-chart", employeeDashboardHandler.GetWorkHoursChart)
 				})
+			})
+
+			// Notification Routes
+			r.Route("/notifications", func(r chi.Router) {
+				// Get SSE token (requires JWT auth)
+				r.Get("/token", notificationHandler.GetSSEToken)
+
+				// SSE Stream (uses SSE token from query param)
+				r.Get("/stream", notificationHandler.Stream)
+
+				// CRUD operations
+				r.Get("/", notificationHandler.List)
+				r.Get("/unread-count", notificationHandler.UnreadCount)
+				r.Post("/mark-read", notificationHandler.MarkAsRead)
+				r.Post("/mark-all-read", notificationHandler.MarkAllAsRead)
+				r.Delete("/{id}", notificationHandler.Delete)
+
+				// Preferences
+				r.Get("/preferences", notificationHandler.GetPreferences)
+				r.Put("/preferences", notificationHandler.UpdatePreference)
 			})
 
 		})

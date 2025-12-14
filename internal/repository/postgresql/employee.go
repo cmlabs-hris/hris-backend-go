@@ -782,3 +782,52 @@ func (e *employeeRepositoryImpl) LinkUser(ctx context.Context, employeeID, userI
 
 	return nil
 }
+
+// GetManagersByCompanyID retrieves all managers and owners for a company (for notifications)
+func (e *employeeRepositoryImpl) GetManagersByCompanyID(ctx context.Context, companyID string) ([]employee.Employee, error) {
+	q := GetQuerier(ctx, e.db)
+
+	query := `
+		SELECT e.id, e.user_id, e.company_id, e.work_schedule_id, e.position_id, e.grade_id, e.branch_id, e.employee_code,
+			e.full_name, e.nik, e.gender, e.phone_number, e.address, e.place_of_birth, e.dob, e.avatar_url, e.education,
+			e.hire_date, e.resignation_date, e.employment_type, e.employment_status, e.warning_letter,
+			e.bank_name, e.bank_account_holder_name, e.bank_account_number, e.base_salary, e.created_at, e.updated_at, e.deleted_at
+		FROM employees e
+		INNER JOIN users u ON e.user_id = u.id
+		WHERE e.company_id = $1 
+			AND e.employment_status = $2 
+			AND e.deleted_at IS NULL
+			AND e.user_id IS NOT NULL
+			AND u.role IN ('owner', 'manager')
+	`
+
+	rows, err := q.Query(ctx, query, companyID, employee.EmploymentStatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get managers: %w", err)
+	}
+	defer rows.Close()
+
+	var managers []employee.Employee
+	for rows.Next() {
+		var emp employee.Employee
+		err := rows.Scan(
+			&emp.ID, &emp.UserID, &emp.CompanyID, &emp.WorkScheduleID, &emp.PositionID,
+			&emp.GradeID, &emp.BranchID, &emp.EmployeeCode, &emp.FullName, &emp.NIK,
+			&emp.Gender, &emp.PhoneNumber, &emp.Address, &emp.PlaceOfBirth, &emp.DOB,
+			&emp.AvatarURL, &emp.Education, &emp.HireDate, &emp.ResignationDate,
+			&emp.EmploymentType, &emp.EmploymentStatus, &emp.WarningLetter,
+			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
+			&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan manager: %w", err)
+		}
+		managers = append(managers, emp)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate managers: %w", err)
+	}
+
+	return managers, nil
+}
