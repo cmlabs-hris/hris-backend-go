@@ -112,6 +112,21 @@ func (l *LeaveHandlerImpl) ApproveRequest(w http.ResponseWriter, r *http.Request
 func (l *LeaveHandlerImpl) CreateRequest(w http.ResponseWriter, r *http.Request) {
 	var req leave.CreateLeaveRequestRequest
 
+	// Get employee_id from JWT claims
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		slog.Error("Failed to get JWT claims", "error", err)
+		response.Unauthorized(w, "Unauthorized")
+		return
+	}
+
+	employeeID, ok := claims["employee_id"].(string)
+	if !ok || employeeID == "" {
+		slog.Error("employee_id not found in JWT claims")
+		response.Forbidden(w, "Employee ID not found in token")
+		return
+	}
+
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		slog.Error("Failed to parse multipart form", "error", err)
 		response.BadRequest(w, "Failed to parse form data", nil)
@@ -129,6 +144,9 @@ func (l *LeaveHandlerImpl) CreateRequest(w http.ResponseWriter, r *http.Request)
 		response.BadRequest(w, "Invalid request format", nil)
 		return
 	}
+
+	// Set employee_id from JWT (override any value from request for security)
+	req.EmployeeID = employeeID
 
 	if err := req.Validate(); err != nil {
 		response.HandleError(w, err)
