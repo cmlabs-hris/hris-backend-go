@@ -81,7 +81,7 @@ func GetDefaultPositions(companyID string) []position.Position {
 		{CompanyID: companyID, Name: "Product Manager"},
 		{CompanyID: companyID, Name: "QA Engineer"},
 		{CompanyID: companyID, Name: "DevOps Engineer"},
-		{CompanyID: companyID, Name: "Engineering"},
+		{CompanyID: companyID, Name: "Director"},
 	}
 }
 
@@ -97,6 +97,7 @@ func GetDefaultGrades(companyID string) []grade.Grade {
 		{CompanyID: companyID, Name: "Senior"},
 		{CompanyID: companyID, Name: "Lead"},
 		{CompanyID: companyID, Name: "Principal"},
+		{CompanyID: companyID, Name: "Executive"},
 	}
 }
 

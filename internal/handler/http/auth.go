@@ -63,7 +63,7 @@ func (a *AuthHandlerImpl) ForgotPassword(w http.ResponseWriter, r *http.Request)
 
 	// Success response - always return success to prevent email enumeration
 	slog.Info("Password reset request processed")
-	response.SuccessWithMessage(w, "If an account with that email exists, a password reset link has been sent", nil)
+	response.SuccessWithMessage(w, "Password reset link has been sent", nil)
 }
 
 // ResetPassword implements AuthHandler.

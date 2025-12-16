@@ -314,9 +314,9 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 	}
 
 	var createdEmployee employee.Employee
-	var createdInvitation invitation.Invitation
 
 	// Wrap employee creation and invitation in a transaction
+	var invReq invitation.CreateRequest
 	err = postgresql.WithTransaction(ctx, s.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
@@ -352,7 +352,7 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 		}
 
 		// Create and send invitation
-		invReq := invitation.CreateRequest{
+		invReq = invitation.CreateRequest{
 			EmployeeID:          created.ID,
 			CompanyID:           companyID,
 			InvitedByEmployeeID: inviterEmployeeID,
@@ -363,21 +363,6 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 			CompanyName:         comp.Name,
 			PositionName:        emp.PositionName,
 		}
-
-		fmt.Println("EmployeeID:", invReq.EmployeeID)
-		fmt.Println("CompanyID:", invReq.CompanyID)
-		fmt.Println("InvitedByEmployeeID:", invReq.InvitedByEmployeeID)
-		fmt.Println("Email:", invReq.Email)
-		fmt.Println("Role:", invReq.Role)
-		fmt.Println("EmployeeName:", invReq.EmployeeName)
-		fmt.Println("InviterName:", invReq.InviterName)
-		fmt.Println("CompanyName:", invReq.CompanyName)
-		fmt.Println("PositionName:", invReq.PositionName)
-		inv, err := s.invitationService.CreateAndSend(txCtx, invReq)
-		if err != nil {
-			return fmt.Errorf("failed to create invitation: %w", err)
-		}
-		createdInvitation = inv
 
 		// Assign leave quotas for the employee based on eligible leave types
 		assignedQuotas, err := s.quotaService.AssignLeaveQuotasForEmployee(txCtx, createdEmployee, time.Now().Year())
@@ -395,8 +380,7 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 		return employee.EmployeeResponse{}, err
 	}
 
-	// Log the invitation creation (optional)
-	_ = createdInvitation // Invitation created successfully
+	go s.invitationService.CreateAndSend(ctx, invReq)
 
 	// Get the full details with JOINs
 	emp, err := s.employeeRepo.GetByIDWithDetails(ctx, createdEmployee.ID, companyID)

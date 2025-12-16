@@ -173,6 +173,18 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 			BankAccountNumber: "N/A", // Placeholder, should be updated in onboarding
 		}
 
+		fmt.Println("user")
+		fmt.Println(userIDPointer)
+		fmt.Println("company")
+		fmt.Println(newCompany.ID)
+		fmt.Println("position")
+		fmt.Println(positionID)
+		fmt.Println("grade")
+		fmt.Println(gradeID)
+		fmt.Println("branch")
+		fmt.Println(branchID)
+		fmt.Println("schedule")
+		fmt.Println(workScheduleID)
 		createdOwnerEmployee, err := c.employeeRepo.Create(txCtx, newEmployee)
 		if err != nil {
 			return fmt.Errorf("failed to create owner employee: %w", err)
