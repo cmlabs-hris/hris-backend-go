@@ -15,6 +15,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/branch"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/fixtures"
@@ -42,7 +43,8 @@ type CompanyServiceImpl struct {
 	employeeRepo         employee.EmployeeRepository
 
 	// Service for assigning leave quotas
-	quotaService *leaveservice.QuotaService
+	quotaService     *leaveservice.QuotaService
+	notificationRepo notification.Repository
 }
 
 // UploadCompanyLogo implements company.CompanyService.
@@ -173,18 +175,6 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 			BankAccountNumber: "N/A", // Placeholder, should be updated in onboarding
 		}
 
-		fmt.Println("user")
-		fmt.Println(userIDPointer)
-		fmt.Println("company")
-		fmt.Println(newCompany.ID)
-		fmt.Println("position")
-		fmt.Println(positionID)
-		fmt.Println("grade")
-		fmt.Println(gradeID)
-		fmt.Println("branch")
-		fmt.Println(branchID)
-		fmt.Println("schedule")
-		fmt.Println(workScheduleID)
 		createdOwnerEmployee, err := c.employeeRepo.Create(txCtx, newEmployee)
 		if err != nil {
 			return fmt.Errorf("failed to create owner employee: %w", err)
@@ -199,6 +189,11 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 		} else {
 			slog.Info("Assigned leave quotas for owner", "employee_id", createdOwnerEmployee.ID, "quota_count", len(assignedQuotas))
 		}
+
+		// c.notificationRepo.UpsertPreference(ctx, &notification.NotificationPreference{
+		// 	UserID: userID,
+		// 	NotificationType: notii,
+		// })
 
 		return nil
 	})
@@ -364,6 +359,7 @@ func NewCompanyService(
 	workScheduleTimeRepo schedule.WorkScheduleTimeRepository,
 	employeeRepo employee.EmployeeRepository,
 	quotaService *leaveservice.QuotaService,
+	notificationRepo notification.Repository,
 ) company.CompanyService {
 	return &CompanyServiceImpl{
 		db:                   db,
@@ -378,5 +374,6 @@ func NewCompanyService(
 		workScheduleTimeRepo: workScheduleTimeRepo,
 		employeeRepo:         employeeRepo,
 		quotaService:         quotaService,
+		notificationRepo:     notificationRepo,
 	}
 }

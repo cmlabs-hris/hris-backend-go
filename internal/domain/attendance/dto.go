@@ -324,11 +324,11 @@ func (f *MyAttendanceFilter) Validate() error {
 
 	// Status validation
 	if f.Status != nil {
-		validStatuses := []string{"present", "absent", "late", "on_leave", "holiday"}
+		validStatuses := []string{"present", "absent", "late", "on_leave", "holiday", "waiting_approval"}
 		if !validator.IsInSlice(*f.Status, validStatuses) {
 			errs = append(errs, validator.ValidationError{
 				Field:   "status",
-				Message: "status must be one of: present, absent, late, on_leave, holiday",
+				Message: "status must be one of: present, absent, late, on_leave, holiday, waiting_approval",
 			})
 		}
 	}

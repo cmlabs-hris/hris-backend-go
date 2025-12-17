@@ -209,9 +209,13 @@ func (a *attendanceRepository) GetMyAttendance(ctx context.Context, employeeID s
 
 	// Status filter
 	if filter.Status != nil && *filter.Status != "" {
-		baseWhere += fmt.Sprintf(" AND a.status = $%d", argIdx)
-		args = append(args, *filter.Status)
-		argIdx++
+		if *filter.Status == "on_leave" {
+			baseWhere += " AND a.leave_type_id IS NOT NULL"
+		} else {
+			baseWhere += fmt.Sprintf(" AND a.status = $%d", argIdx)
+			args = append(args, *filter.Status)
+			argIdx++
+		}
 	}
 
 	// Count total

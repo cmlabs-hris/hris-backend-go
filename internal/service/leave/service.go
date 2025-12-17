@@ -422,7 +422,8 @@ func (l *LeaveServiceImpl) ApproveLeaveRequest(ctx context.Context, requestID st
 	}
 
 	// Notify employee that their leave request was approved
-	go l.notifyEmployeeOnLeaveApproved(ctx, request, companyID, approverID)
+	// Use context.WithoutCancel to prevent cancellation when HTTP request ends
+	go l.notifyEmployeeOnLeaveApproved(context.WithoutCancel(ctx), request, companyID, approverID)
 
 	return nil
 }
@@ -561,7 +562,8 @@ func (l *LeaveServiceImpl) CreateLeaveRequest(ctx context.Context, req leave.Cre
 	}
 
 	// Notify managers about new leave request
-	go l.notifyManagersOnLeaveRequest(ctx, requestResponse)
+	// Use context.WithoutCancel to prevent cancellation when HTTP request ends
+	go l.notifyManagersOnLeaveRequest(context.WithoutCancel(ctx), requestResponse)
 
 	return requestResponse, nil
 }
@@ -624,8 +626,10 @@ func (l *LeaveServiceImpl) CreateLeaveType(ctx context.Context, req leave.Create
 	}
 
 	if leaveType.HasQuota != nil && *leaveType.HasQuota {
+		// Use context.WithoutCancel to prevent cancellation when HTTP request ends
+		bgCtx := context.WithoutCancel(ctx)
 		go func() {
-			err := l.quotaService.AllocateTypeQuota(ctx, leaveType, companyID, time.Now().Year())
+			err := l.quotaService.AllocateTypeQuota(bgCtx, leaveType, companyID, time.Now().Year())
 			if err != nil {
 				fmt.Printf("failed to allocate type quota for leave type %s: %v\n", leaveType.ID, err)
 			} else {
@@ -821,7 +825,8 @@ func (l *LeaveServiceImpl) RejectLeaveRequest(ctx context.Context, req leave.Rej
 	}
 
 	// Notify employee that their leave request was rejected
-	go l.notifyEmployeeOnLeaveRejected(ctx, request, companyID, approverID, *req.Reason)
+	// Use context.WithoutCancel to prevent cancellation when HTTP request ends
+	go l.notifyEmployeeOnLeaveRejected(context.WithoutCancel(ctx), request, companyID, approverID, *req.Reason)
 
 	return nil
 }
@@ -873,12 +878,12 @@ func (l *LeaveServiceImpl) notifyManagersOnLeaveRequest(ctx context.Context, req
 			Title:       "New Leave Request",
 			Message:     fmt.Sprintf("%s submitted a %s request from %s to %s", req.EmployeeName, req.LeaveTypeName, req.StartDate.Format("02 Jan 2006"), req.EndDate.Format("02 Jan 2006")),
 			Data: map[string]interface{}{
-				"employee_id":     req.EmployeeID,
+				"employee_id":      req.EmployeeID,
 				"leave_request_id": req.ID,
-				"leave_type":      req.LeaveTypeName,
-				"start_date":      req.StartDate.Format("2006-01-02"),
-				"end_date":        req.EndDate.Format("2006-01-02"),
-				"total_days":      req.TotalDays,
+				"leave_type":       req.LeaveTypeName,
+				"start_date":       req.StartDate.Format("2006-01-02"),
+				"end_date":         req.EndDate.Format("2006-01-02"),
+				"total_days":       req.TotalDays,
 			},
 		})
 	}
@@ -886,19 +891,22 @@ func (l *LeaveServiceImpl) notifyManagersOnLeaveRequest(ctx context.Context, req
 
 // notifyEmployeeOnLeaveApproved sends notification to employee when leave is approved
 func (l *LeaveServiceImpl) notifyEmployeeOnLeaveApproved(ctx context.Context, req leave.LeaveRequest, companyID, approverID string) {
+
 	if l.notificationService == nil {
 		return
 	}
 
 	// Get employee user ID
 	emp, err := l.EmployeeRepository.GetByID(ctx, req.EmployeeID)
+
 	if err != nil || emp.UserID == nil {
+		fmt.Printf("failed to get employee user ID for notification: %v\n", err)
 		return
 	}
-
 	// Get leave type name
 	leaveType, err := l.LeaveTypeRepository.GetByID(ctx, req.LeaveTypeID)
 	if err != nil {
+		fmt.Printf("failed to get leave type for notification: %v\n", err)
 		return
 	}
 

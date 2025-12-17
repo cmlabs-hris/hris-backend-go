@@ -9,7 +9,6 @@ import (
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -26,10 +25,6 @@ func NewNotificationRepository(db *database.DB) notification.Repository {
 func (r *notificationRepository) Create(ctx context.Context, n *notification.Notification) error {
 	q := GetQuerier(ctx, r.db)
 
-	if n.ID == "" {
-		n.ID = uuid.New().String()
-	}
-
 	dataJSON, err := json.Marshal(n.Data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal notification data: %w", err)
@@ -37,7 +32,7 @@ func (r *notificationRepository) Create(ctx context.Context, n *notification.Not
 
 	query := `
 		INSERT INTO notifications (id, company_id, recipient_id, sender_id, type, title, message, data, is_read, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES (uuidv7(), $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
 	_, err = q.Exec(ctx, query,
@@ -73,7 +68,7 @@ func (r *notificationRepository) CreateBatch(ctx context.Context, notifications 
 
 	for i, n := range notifications {
 		if n.ID == "" {
-			n.ID = uuid.New().String()
+			n.ID = "uuidv7()"
 		}
 
 		dataJSON, err := json.Marshal(n.Data)
@@ -392,12 +387,12 @@ func (r *notificationRepository) UpsertPreference(ctx context.Context, pref *not
 	q := GetQuerier(ctx, r.db)
 
 	if pref.ID == "" {
-		pref.ID = uuid.New().String()
+		pref.ID = "uuidv7()"
 	}
 
 	query := `
 		INSERT INTO notification_preferences (id, user_id, notification_type, email_enabled, push_enabled, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES (id, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id, notification_type)
 		DO UPDATE SET email_enabled = $4, push_enabled = $5, updated_at = $7
 	`

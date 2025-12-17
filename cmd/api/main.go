@@ -27,6 +27,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/master"
 	notificationService "github.com/cmlabs-hris/hris-backend-go/internal/service/notification"
 	payrollService "github.com/cmlabs-hris/hris-backend-go/internal/service/payroll"
+	reportService "github.com/cmlabs-hris/hris-backend-go/internal/service/report"
 	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
 )
 
@@ -65,6 +66,7 @@ func main() {
 	dashboardRepo := postgresql.NewDashboardRepository(db)
 	empDashboardRepo := postgresql.NewEmployeeDashboardRepository(db)
 	notificationRepo := postgresql.NewNotificationRepository(db)
+	reportRepo := postgresql.NewReportRepository(db)
 
 	// Initialize SSE Hub for real-time notifications
 	sseHub := sse.NewHub()
@@ -110,6 +112,7 @@ func main() {
 		workScheduleTimeRepo,
 		employeeRepo,
 		quotaService,
+		notificationRepo,
 	)
 	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
 	notificationSvc := notificationService.NewNotificationService(notificationRepo, sseHub, notificationService.Config{
@@ -159,6 +162,7 @@ func main() {
 	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo, notificationSvc)
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
 	empDashboardSvc := employeeDashboardService.NewEmployeeDashboardService(empDashboardRepo)
+	reportSvc := reportService.NewReportService(reportRepo)
 
 	authHandler := appHTTP.NewAuthHandler(JWTService, authService, GoogleService, cfg.App.FrontendURL)
 	companyHandler := appHTTP.NewCompanyHandler(JWTService, companyService, fileService)
@@ -172,6 +176,7 @@ func main() {
 	dashboardHandler := appHTTP.NewDashboardHandler(dashboardSvc)
 	empDashboardHandler := appHTTP.NewEmployeeDashboardHandler(empDashboardSvc)
 	notificationHandler := appHTTP.NewNotificationHandler(notificationSvc, JWTService)
+	reportHandler := appHTTP.NewReportHandler(reportSvc)
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -187,6 +192,7 @@ func main() {
 		dashboardHandler,
 		empDashboardHandler,
 		notificationHandler,
+		reportHandler,
 		cfg.Storage.BasePath,
 	)
 

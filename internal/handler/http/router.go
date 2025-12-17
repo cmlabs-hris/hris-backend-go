@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, reportHandler ReportHandler, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -359,6 +359,15 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 				// Preferences
 				r.Get("/preferences", notificationHandler.GetPreferences)
 				r.Put("/preferences", notificationHandler.UpdatePreference)
+			})
+
+			// Report Routes (Manager+)
+			r.Route("/reports", func(r chi.Router) {
+				r.Use(middleware.RequireManager)
+				r.Get("/attendance", reportHandler.GetMonthlyAttendanceReport)
+				r.Get("/payroll", reportHandler.GetPayrollSummaryReport)
+				r.Get("/leave-balance", reportHandler.GetLeaveBalanceReport)
+				r.Get("/new-hires", reportHandler.GetNewHireReport)
 			})
 
 		})
