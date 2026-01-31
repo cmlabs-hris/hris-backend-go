@@ -42,3 +42,5 @@ require (
 	github.com/shopspring/decimal v1.4.0
 	golang.org/x/image v0.33.0
 )
+
+require github.com/xendit/xendit-go/v7 v7.0.0

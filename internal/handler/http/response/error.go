@@ -15,6 +15,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/grade"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/subscription"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
 )
@@ -305,6 +306,70 @@ func HandleError(w http.ResponseWriter, err error) {
 		BadRequest(w, "Cannot revoke an accepted invitation", nil)
 	case errors.Is(err, employee.ErrCannotDeleteSelf):
 		Forbidden(w, "You cannot delete your own employee record")
+
+	// Subscription domain errors
+	case errors.Is(err, subscription.ErrSubscriptionNotFound):
+		NotFound(w, "Subscription not found")
+	case errors.Is(err, subscription.ErrSubscriptionExpired):
+		Forbidden(w, "Subscription has expired")
+	case errors.Is(err, subscription.ErrSubscriptionCancelled):
+		Forbidden(w, "Subscription has been cancelled")
+	case errors.Is(err, subscription.ErrAlreadySubscribed):
+		Conflict(w, "Company already has an active subscription")
+	case errors.Is(err, subscription.ErrInvalidSubscriptionState):
+		BadRequest(w, "Invalid subscription state for this operation", nil)
+
+	// Plan errors
+	case errors.Is(err, subscription.ErrPlanNotFound):
+		NotFound(w, "Subscription plan not found")
+	case errors.Is(err, subscription.ErrPlanNotActive):
+		BadRequest(w, "Subscription plan is not active", nil)
+	case errors.Is(err, subscription.ErrInvalidPlanDowngrade):
+		BadRequest(w, "Cannot downgrade to a higher tier plan", nil)
+	case errors.Is(err, subscription.ErrInvalidPlanUpgrade):
+		BadRequest(w, "Cannot upgrade to a lower tier plan", nil)
+	case errors.Is(err, subscription.ErrSamePlan):
+		Conflict(w, "Already subscribed to this plan")
+	case errors.Is(err, subscription.ErrNotAnUpgrade):
+		BadRequest(w, "Target plan is not an upgrade from current plan", nil)
+	case errors.Is(err, subscription.ErrNotADowngrade):
+		BadRequest(w, "Target plan is not a downgrade from current plan", nil)
+
+	// Seat errors
+	case errors.Is(err, subscription.ErrInsufficientSeats):
+		BadRequest(w, "Seat count must be greater than or equal to active employees", nil)
+	case errors.Is(err, subscription.ErrMaxSeatsReached):
+		Forbidden(w, "Maximum seats limit reached")
+	case errors.Is(err, subscription.ErrExceedsPlanMaxSeats):
+		BadRequest(w, "Requested seats exceed plan maximum", nil)
+	case errors.Is(err, subscription.ErrSeatLimitExceeded):
+		Forbidden(w, "Seat limit exceeded for current subscription")
+	case errors.Is(err, subscription.ErrSeatsBelowActive):
+		BadRequest(w, "Seat count cannot be less than active employees", nil)
+
+	// Feature errors
+	case errors.Is(err, subscription.ErrFeatureNotFound):
+		NotFound(w, "Feature not found")
+	case errors.Is(err, subscription.ErrFeatureNotAllowed):
+		Forbidden(w, "Feature not available in current plan")
+	case errors.Is(err, subscription.ErrFeatureNotAvailable):
+		Forbidden(w, "Feature not available in current subscription")
+
+	// Invoice errors
+	case errors.Is(err, subscription.ErrInvoiceNotFound):
+		NotFound(w, "Invoice not found")
+	case errors.Is(err, subscription.ErrInvoiceAlreadyPaid):
+		Conflict(w, "Invoice has already been paid")
+	case errors.Is(err, subscription.ErrInvoiceExpired):
+		BadRequest(w, "Invoice has expired", nil)
+	case errors.Is(err, subscription.ErrPendingInvoiceExists):
+		Conflict(w, "Pending invoice already exists")
+
+	// Webhook errors
+	case errors.Is(err, subscription.ErrInvalidWebhookSignature):
+		Forbidden(w, "Invalid webhook signature")
+	case errors.Is(err, subscription.ErrWebhookProcessingFailed):
+		InternalServerError(w, "Failed to process webhook")
 
 	// Default
 	default:

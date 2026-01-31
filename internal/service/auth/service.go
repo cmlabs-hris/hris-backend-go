@@ -9,6 +9,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/auth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/subscription"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
@@ -31,8 +32,9 @@ type AuthServiceImpl struct {
 	postgresql.JWTRepository
 	postgresql.PasswordResetRepository
 	employee.EmployeeRepository
-	emailService email.EmailService
-	frontendURL  string
+	emailService        email.EmailService
+	frontendURL         string
+	subscriptionService subscription.SubscriptionService
 }
 
 func NewAuthService(
@@ -45,6 +47,7 @@ func NewAuthService(
 	employeeRepo employee.EmployeeRepository,
 	emailService email.EmailService,
 	frontendURL string,
+	subscriptionService subscription.SubscriptionService,
 ) auth.AuthService {
 	return &AuthServiceImpl{
 		db:                      db,
@@ -56,6 +59,42 @@ func NewAuthService(
 		EmployeeRepository:      employeeRepo,
 		emailService:            emailService,
 		frontendURL:             frontendURL,
+		subscriptionService:     subscriptionService,
+	}
+}
+
+// getSubscriptionClaims retrieves subscription features and expiry for JWT claims
+// Returns nil if user has no company or subscription (e.g., pending user)
+func (a *AuthServiceImpl) getSubscriptionClaims(ctx context.Context, companyID *string) *jwt.SubscriptionClaims {
+	if companyID == nil || *companyID == "" {
+		return nil
+	}
+
+	// Get subscription features
+	features, err := a.subscriptionService.GetSubscriptionFeatures(ctx, *companyID)
+	if err != nil {
+		slog.Warn("Failed to get subscription features for JWT", "company_id", *companyID, "error", err)
+		return nil
+	}
+
+	// Get subscription info for expiry
+	sub, err := a.subscriptionService.GetMySubscription(ctx, *companyID)
+	if err != nil {
+		slog.Warn("Failed to get subscription for JWT", "company_id", *companyID, "error", err)
+		return nil
+	}
+
+	// Parse subscription expiry
+	var expiresAt *time.Time
+	if sub.CurrentPeriodEnd != "" {
+		if parsed, err := time.Parse(time.RFC3339, sub.CurrentPeriodEnd); err == nil {
+			expiresAt = &parsed
+		}
+	}
+
+	return &jwt.SubscriptionClaims{
+		Features:              features,
+		SubscriptionExpiresAt: expiresAt,
 	}
 }
 
@@ -186,6 +225,9 @@ func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest,
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
+		// Get subscription claims for JWT (features + expiry)
+		subClaims := a.getSubscriptionClaims(txCtx, userData.CompanyID)
+
 		// Now you can use userData.EmployeeID directly - it will be nil if user has no employee record
 		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(
 			userData.ID,
@@ -193,6 +235,7 @@ func (a *AuthServiceImpl) Login(ctx context.Context, loginReq auth.LoginRequest,
 			userData.EmployeeID, // Pass employee_id from the user entity
 			userData.CompanyID,
 			userData.Role,
+			subClaims,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
@@ -255,7 +298,10 @@ func (a *AuthServiceImpl) LoginWithEmployeeCode(ctx context.Context, loginEmploy
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
+		// Get subscription claims for JWT (features + expiry)
+		subClaims := a.getSubscriptionClaims(txCtx, userData.CompanyID)
+
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role, subClaims)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -328,7 +374,10 @@ func (a *AuthServiceImpl) LoginWithGoogle(ctx context.Context, googleEmail strin
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
+		// Get subscription claims for JWT (features + expiry)
+		subClaims := a.getSubscriptionClaims(txCtx, userData.CompanyID)
+
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role, subClaims)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}
@@ -415,9 +464,12 @@ func (a *AuthServiceImpl) RefreshToken(ctx context.Context, req auth.RefreshToke
 		return auth.AccessTokenResponse{}, auth.ErrUserNotFound
 	}
 
-	// 5. Generate new access token
+	// 5. Get subscription claims for JWT (features + expiry)
+	subClaims := a.getSubscriptionClaims(ctx, userData.CompanyID)
+
+	// 6. Generate new access token with subscription claims
 	accessTokenResponse.AccessToken, accessTokenResponse.AccessTokenExpiresIn, err =
-		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role)
+		a.Service.GenerateAccessToken(userData.ID, userData.Email, userData.EmployeeID, userData.CompanyID, userData.Role, subClaims)
 	if err != nil {
 		return auth.AccessTokenResponse{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -465,7 +517,8 @@ func (a *AuthServiceImpl) Register(ctx context.Context, registerReq auth.Registe
 	err = postgresql.WithTransaction(ctx, a.db, func(tx pgx.Tx) error {
 		txCtx := context.WithValue(ctx, "tx", tx)
 
-		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, nil, newUser.Role)
+		// New user has no company yet, so no subscription claims
+		tokenResponse.AccessToken, tokenResponse.AccessTokenExpiresIn, err = a.Service.GenerateAccessToken(newUser.ID, newUser.Email, nil, nil, newUser.Role, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create access token: %w", err)
 		}

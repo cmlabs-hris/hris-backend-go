@@ -18,6 +18,7 @@ type Config struct {
 	Storage      StorageConfig
 	SMTP         SMTPConfig
 	Invitation   InvitationConfig
+	Xendit       XenditConfig
 }
 
 // SMTPConfig holds SMTP configuration for sending emails
@@ -34,6 +35,17 @@ type SMTPConfig struct {
 type InvitationConfig struct {
 	ExpiryDays int
 	BaseURL    string // e.g., "https://app.hris.com"
+}
+
+// XenditConfig holds Xendit payment gateway configuration
+type XenditConfig struct {
+	APIKey          string
+	WebhookToken    string // For webhook signature verification
+	BaseURL         string // "https://api.xendit.co" for production
+	Environment     string // "sandbox" or "production"
+	InvoiceExpiry   int    // Invoice expiry in hours (default: 24)
+	SuccessRedirect string // URL to redirect after successful payment
+	FailureRedirect string // URL to redirect after failed payment
 }
 
 type DatabaseConfig struct {
@@ -182,6 +194,18 @@ func Load() (*Config, error) {
 	config.Invitation = InvitationConfig{
 		ExpiryDays: expiryDays,
 		BaseURL:    getEnv("INVITATION_BASE_URL", "http://localhost:3000"),
+	}
+
+	// Xendit Configuration
+	xenditInvoiceExpiry, _ := strconv.Atoi(getEnv("XENDIT_INVOICE_EXPIRY_HOURS", "24"))
+	config.Xendit = XenditConfig{
+		APIKey:          getEnv("XENDIT_API_KEY", ""),
+		WebhookToken:    getEnv("XENDIT_WEBHOOK_TOKEN", ""),
+		BaseURL:         getEnv("XENDIT_BASE_URL", "https://api.xendit.co"),
+		Environment:     getEnv("XENDIT_ENVIRONMENT", "sandbox"),
+		InvoiceExpiry:   xenditInvoiceExpiry,
+		SuccessRedirect: getEnv("XENDIT_SUCCESS_REDIRECT", "http://localhost:3000/subscription/success"),
+		FailureRedirect: getEnv("XENDIT_FAILURE_REDIRECT", "http://localhost:3000/subscription/failed"),
 	}
 
 	// Session configuration

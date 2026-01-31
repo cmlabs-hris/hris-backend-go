@@ -12,6 +12,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/company"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/subscription"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	"github.com/cmlabs-hris/hris-backend-go/internal/service/file"
@@ -21,12 +22,13 @@ import (
 )
 
 type EmployeeServiceImpl struct {
-	db                *database.DB
-	employeeRepo      employee.EmployeeRepository
-	companyRepo       company.CompanyRepository
-	fileService       file.FileService
-	invitationService invitation.InvitationService
-	quotaService      *leaveservice.QuotaService
+	db                  *database.DB
+	employeeRepo        employee.EmployeeRepository
+	companyRepo         company.CompanyRepository
+	fileService         file.FileService
+	invitationService   invitation.InvitationService
+	quotaService        *leaveservice.QuotaService
+	subscriptionService subscription.SubscriptionService
 }
 
 func NewEmployeeService(
@@ -36,14 +38,16 @@ func NewEmployeeService(
 	fileService file.FileService,
 	invitationService invitation.InvitationService,
 	quotaService *leaveservice.QuotaService,
+	subscriptionService subscription.SubscriptionService,
 ) employee.EmployeeService {
 	return &EmployeeServiceImpl{
-		db:                db,
-		employeeRepo:      employeeRepo,
-		companyRepo:       companyRepo,
-		fileService:       fileService,
-		invitationService: invitationService,
-		quotaService:      quotaService,
+		db:                  db,
+		employeeRepo:        employeeRepo,
+		companyRepo:         companyRepo,
+		fileService:         fileService,
+		invitationService:   invitationService,
+		quotaService:        quotaService,
+		subscriptionService: subscriptionService,
 	}
 }
 
@@ -211,6 +215,17 @@ func (s *EmployeeServiceImpl) CreateEmployee(ctx context.Context, req employee.C
 	companyID, inviterEmployeeID, _, err := getClaimsFromContext(ctx)
 	if err != nil {
 		return employee.EmployeeResponse{}, err
+	}
+
+	// Check subscription seat limit before creating employee
+	if s.subscriptionService != nil {
+		canAdd, err := s.subscriptionService.CanAddEmployee(ctx, companyID)
+		if err != nil {
+			return employee.EmployeeResponse{}, fmt.Errorf("failed to check seat limit: %w", err)
+		}
+		if !canAdd {
+			return employee.EmployeeResponse{}, subscription.ErrMaxSeatsReached
+		}
 	}
 
 	// Check if employee code already exists

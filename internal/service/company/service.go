@@ -17,6 +17,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/master/position"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/notification"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/schedule"
+	"github.com/cmlabs-hris/hris-backend-go/internal/domain/subscription"
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
 	"github.com/cmlabs-hris/hris-backend-go/internal/fixtures"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
@@ -45,6 +46,9 @@ type CompanyServiceImpl struct {
 	// Service for assigning leave quotas
 	quotaService     *leaveservice.QuotaService
 	notificationRepo notification.Repository
+
+	// Subscription service for creating trial on company creation
+	subscriptionService subscription.SubscriptionService
 }
 
 // UploadCompanyLogo implements company.CompanyService.
@@ -188,6 +192,15 @@ func (c *CompanyServiceImpl) Create(ctx context.Context, req company.CreateCompa
 			// Don't fail the transaction, just log the warning
 		} else {
 			slog.Info("Assigned leave quotas for owner", "employee_id", createdOwnerEmployee.ID, "quota_count", len(assignedQuotas))
+		}
+
+		// Create trial subscription for the new company
+		if c.subscriptionService != nil {
+			_, err = c.subscriptionService.CreateTrialSubscription(txCtx, newCompany.ID)
+			if err != nil {
+				return fmt.Errorf("failed to create trial subscription: %w", err)
+			}
+			slog.Info("Created trial subscription for company", "company_id", newCompany.ID)
 		}
 
 		// c.notificationRepo.UpsertPreference(ctx, &notification.NotificationPreference{
@@ -360,6 +373,7 @@ func NewCompanyService(
 	employeeRepo employee.EmployeeRepository,
 	quotaService *leaveservice.QuotaService,
 	notificationRepo notification.Repository,
+	subscriptionService subscription.SubscriptionService,
 ) company.CompanyService {
 	return &CompanyServiceImpl{
 		db:                   db,
@@ -375,5 +389,6 @@ func NewCompanyService(
 		employeeRepo:         employeeRepo,
 		quotaService:         quotaService,
 		notificationRepo:     notificationRepo,
+		subscriptionService:  subscriptionService,
 	}
 }

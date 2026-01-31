@@ -10,8 +10,14 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+// SubscriptionClaims contains subscription-related claims for the JWT
+type SubscriptionClaims struct {
+	Features              []string   // Feature codes the subscription has access to
+	SubscriptionExpiresAt *time.Time // When the subscription period ends
+}
+
 type Service interface {
-	GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role) (token string, expiresAt int64, err error)
+	GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role, subClaims *SubscriptionClaims) (token string, expiresAt int64, err error)
 	GenerateRefreshToken(userID string) (token string, expiresAt int64, err error)
 	GenerateSSEToken(userID string) (token string, expiresIn int, err error)
 	ValidateSSEToken(tokenString string) (userID string, err error)
@@ -44,14 +50,14 @@ func NewJWTService(secretKey string, accessTokenExpirationTime string, refreshTo
 	}
 }
 
-func (j *JWTService) GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role) (token string, expiresAt int64, err error) {
+func (j *JWTService) GenerateAccessToken(userID string, email string, employeeID *string, companyID *string, role user.Role, subClaims *SubscriptionClaims) (token string, expiresAt int64, err error) {
 	expDuration, err := time.ParseDuration(j.accessTokenExpirationTime)
 	if err != nil {
 		return "", 0, err
 	}
 	expiresAt = time.Now().Add(expDuration).Unix()
 
-	_, tokenString, err := j.tokenAuth.Encode(map[string]interface{}{
+	claims := map[string]interface{}{
 		"user_id":     userID,
 		"email":       email,
 		"employee_id": j.returnValueOrNil(employeeID),
@@ -59,7 +65,19 @@ func (j *JWTService) GenerateAccessToken(userID string, email string, employeeID
 		"role":        string(role),
 		"type":        "access",
 		"exp":         expiresAt,
-	})
+	}
+
+	// Add subscription claims if provided
+	if subClaims != nil {
+		if subClaims.Features != nil {
+			claims["features"] = subClaims.Features
+		}
+		if subClaims.SubscriptionExpiresAt != nil {
+			claims["subscription_expires_at"] = subClaims.SubscriptionExpiresAt.Unix()
+		}
+	}
+
+	_, tokenString, err := j.tokenAuth.Encode(claims)
 	return tokenString, expiresAt, err
 }
 

@@ -14,7 +14,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 )
 
-func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, reportHandler ReportHandler, storageBasePath string) *chi.Mux {
+func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, reportHandler ReportHandler, subscriptionHandler SubscriptionHandler, subscriptionMiddleware *middleware.SubscriptionMiddleware, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -56,6 +56,12 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		// Public invitation route (no auth required) - uses /view/ prefix to avoid conflict with /my
 		r.Get("/invitations/view/{token}", invitationHandler.GetInvitationByToken)
 
+		// Public subscription routes
+		r.Get("/plans", subscriptionHandler.GetPlans)
+
+		// Xendit webhook (public, signature verified)
+		r.Post("/webhook/xendit", subscriptionHandler.HandleWebhook)
+
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/register", authHandler.Register)
 			r.Post("/refresh", authHandler.RefreshToken)
@@ -91,52 +97,72 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Post("/", companyhandler.Create)
 				})
 
-				r.Route("/my", func(r chi.Router) {
-					r.Get("/", companyhandler.GetByID)
+				r.Group(func(r chi.Router) {
+					r.Use(subscriptionMiddleware.RequireActiveSubscription)
+					r.Route("/my", func(r chi.Router) {
+						r.Get("/", companyhandler.GetByID)
 
-					// Owner only
-					r.Group(func(r chi.Router) {
-						r.Use(middleware.RequireOwner)
-						r.Put("/", companyhandler.Update)
-						r.Delete("/", companyhandler.Delete)
-						r.Post("/logo", companyhandler.UploadCompanyLogo)
+						// Owner only
+						r.Group(func(r chi.Router) {
+							r.Use(middleware.RequireOwner)
+							r.Put("/", companyhandler.Update)
+							r.Delete("/", companyhandler.Delete)
+							r.Post("/logo", companyhandler.UploadCompanyLogo)
+						})
 					})
 				})
 			})
 
 			r.Route("/leave", func(r chi.Router) {
+				// Leave Types
 				r.Route("/types", func(r chi.Router) {
+					// Read operations - available to all subscriptions
 					r.Get("/", leaveHandler.ListTypes)
+
+					// Write operations - require leave feature
 					r.Group(func(r chi.Router) {
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureLeave))
 						r.Use(middleware.RequireOwner)
 						r.Post("/", leaveHandler.CreateType)
 						r.Put("/{id}", leaveHandler.UpdateType)
 						r.Delete("/{id}", leaveHandler.DeleteType)
 					})
-
 				})
 
+				// Leave Quota
 				r.Route("/quota", func(r chi.Router) {
-					r.Group(func(r chi.Router) {
-						r.Use(middleware.RequireManager)
-						r.Get("/", leaveHandler.ListQuota)
-						// r.Post("/", leaveHandler.SetQuota)
-						r.Post("/adjust", leaveHandler.AdjustQuota)
-					})
+					// Read operations - available to all subscriptions
 					r.Get("/my", leaveHandler.GetMyQuota)
 					r.Get("/{id}", leaveHandler.GetQuota)
+
+					// Manager read + write operations - require leave feature
+					r.Group(func(r chi.Router) {
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureLeave))
+						r.Use(middleware.RequireManager)
+						r.Get("/", leaveHandler.ListQuota)
+						r.Post("/adjust", leaveHandler.AdjustQuota)
+					})
 				})
 
+				// Leave Requests
 				r.Route("/requests", func(r chi.Router) {
-					r.Group(func(r chi.Router) {
-						r.Use(middleware.RequireManager)
-						r.Get("/", leaveHandler.ListRequests)
-						r.Post("/{id}/approve", leaveHandler.ApproveRequest)
-						r.Post("/{id}/reject", leaveHandler.RejectRequest)
-					})
-					r.Post("/", leaveHandler.CreateRequest)
+					// Read operations - available to all subscriptions
 					r.Get("/{id}", leaveHandler.GetRequest)
 					r.Get("/my", leaveHandler.GetMyRequests)
+
+					// Write operations - require leave feature
+					r.Group(func(r chi.Router) {
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureLeave))
+						r.Post("/", leaveHandler.CreateRequest)
+
+						// Manager operations
+						r.Group(func(r chi.Router) {
+							r.Use(middleware.RequireManager)
+							r.Get("/", leaveHandler.ListRequests)
+							r.Post("/{id}/approve", leaveHandler.ApproveRequest)
+							r.Post("/{id}/reject", leaveHandler.RejectRequest)
+						})
+					})
 				})
 			})
 
@@ -186,41 +212,47 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 			})
 
 			r.Route("/schedule", func(r chi.Router) {
-				// Work Schedule
-				r.Get("/", scheduleHandler.ListWorkSchedules)   // All
-				r.Get("/{id}", scheduleHandler.GetWorkSchedule) // All
+				// Read operations - available to all subscriptions (schedules are core system data)
+				r.Get("/", scheduleHandler.ListWorkSchedules)
+				r.Get("/{id}", scheduleHandler.GetWorkSchedule)
+				r.Get("/employee/{id}", scheduleHandler.GetEmployeeScheduleTimeline)
 
-				r.Post("/{scheduleID}/employee/{employeeID}", scheduleHandler.AssignSchedule)
-				r.Put("/{assignID}/employee/{employeeID}", scheduleHandler.UpdateEmployeeScheduleAssignment)
-				r.Delete("/{assignID}/employee/{employeeID}", scheduleHandler.DeleteEmployeeScheduleAssignment)
-				// Employee Schedule Timeline
-				r.Get("/employee/{id}", scheduleHandler.GetEmployeeScheduleTimeline) // All - Get timeline for specific employee
-
+				// Write operations - require schedule feature
 				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireOwner)
-					r.Post("/", scheduleHandler.CreateWorkSchedule)       // Owner
-					r.Put("/{id}", scheduleHandler.UpdateWorkSchedule)    // Owner
-					r.Delete("/{id}", scheduleHandler.DeleteWorkSchedule) // Owner
+					r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureSchedule))
+
+					r.Post("/{scheduleID}/employee/{employeeID}", scheduleHandler.AssignSchedule)
+					r.Put("/{assignID}/employee/{employeeID}", scheduleHandler.UpdateEmployeeScheduleAssignment)
+					r.Delete("/{assignID}/employee/{employeeID}", scheduleHandler.DeleteEmployeeScheduleAssignment)
+
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Post("/", scheduleHandler.CreateWorkSchedule)
+						r.Put("/{id}", scheduleHandler.UpdateWorkSchedule)
+						r.Delete("/{id}", scheduleHandler.DeleteWorkSchedule)
+					})
 				})
 
 				// Work Schedule Times
 				r.Route("/times", func(r chi.Router) {
-					r.Get("/{id}", scheduleHandler.GetWorkScheduleTime) // All
+					r.Get("/{id}", scheduleHandler.GetWorkScheduleTime) // Read - all subscriptions
 					r.Group(func(r chi.Router) {
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureSchedule))
 						r.Use(middleware.RequireOwner)
-						r.Post("/", scheduleHandler.CreateWorkScheduleTime)       // Owner
-						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleTime)    // Owner
-						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleTime) // Owner
+						r.Post("/", scheduleHandler.CreateWorkScheduleTime)
+						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleTime)
+						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleTime)
 					})
 				})
 
 				// Work Schedule Locations
 				r.Route("/locations", func(r chi.Router) {
-					r.Get("/{id}", scheduleHandler.GetWorkScheduleLocation) // All
+					r.Get("/{id}", scheduleHandler.GetWorkScheduleLocation) // Read - all subscriptions
 					r.Group(func(r chi.Router) {
-						r.Post("/", scheduleHandler.CreateWorkScheduleLocation)       // Owner
-						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleLocation)    // Owner
-						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleLocation) // Owner
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureSchedule))
+						r.Post("/", scheduleHandler.CreateWorkScheduleLocation)
+						r.Put("/{id}", scheduleHandler.UpdateWorkScheduleLocation)
+						r.Delete("/{id}", scheduleHandler.DeleteWorkScheduleLocation)
 					})
 				})
 
@@ -228,42 +260,61 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 
 			// Employee Schedule Assignments
 			r.Route("/employee-schedules", func(r chi.Router) {
-				r.Get("/", scheduleHandler.ListEmployeeScheduleAssignments)    // All (filtered by employee_id)
-				r.Get("/active", scheduleHandler.GetActiveScheduleForEmployee) // All
-				r.Get("/{id}", scheduleHandler.GetEmployeeScheduleAssignment)  // All
+				// Read operations - available to all subscriptions
+				r.Get("/", scheduleHandler.ListEmployeeScheduleAssignments)
+				r.Get("/active", scheduleHandler.GetActiveScheduleForEmployee)
+				r.Get("/{id}", scheduleHandler.GetEmployeeScheduleAssignment)
+
+				// Write operations - require schedule feature
 				r.Group(func(r chi.Router) {
+					r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureSchedule))
 					r.Use(middleware.RequireManager)
-					r.Post("/", scheduleHandler.CreateEmployeeScheduleAssignment)       // Owner
-					r.Put("/{id}", scheduleHandler.UpdateEmployeeScheduleAssignment)    // Owner
-					r.Delete("/{id}", scheduleHandler.DeleteEmployeeScheduleAssignment) // Owner
+					r.Post("/", scheduleHandler.CreateEmployeeScheduleAssignment)
+					r.Put("/{id}", scheduleHandler.UpdateEmployeeScheduleAssignment)
+					r.Delete("/{id}", scheduleHandler.DeleteEmployeeScheduleAssignment)
 				})
 			})
 
 			// Attendance Routes
 			r.Route("/attendance", func(r chi.Router) {
+				// Read operations - available to all subscriptions
+				r.Get("/my", attendanceHandler.GetMyAttendance) // Get my attendance records
+
+				// Write operations - require attendance feature
 				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireManager)
-					r.Get("/", attendanceHandler.List)                 // All with filters
-					r.Get("/{id}", attendanceHandler.Get)              // Get single attendance
-					r.Put("/{id}", attendanceHandler.Update)           // Update attendance (fix records)
-					r.Delete("/{id}", attendanceHandler.Delete)        // Delete attendance
-					r.Post("/{id}/approve", attendanceHandler.Approve) // Approve attendance
-					r.Post("/{id}/reject", attendanceHandler.Reject)   // Reject attendance
+					r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureAttendance))
+					r.Post("/clock-in", attendanceHandler.ClockIn)   // Clock in
+					r.Post("/clock-out", attendanceHandler.ClockOut) // Clock out
+
+					// Manager operations
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireManager)
+						r.Get("/", attendanceHandler.List)                 // All with filters
+						r.Get("/{id}", attendanceHandler.Get)              // Get single attendance
+						r.Put("/{id}", attendanceHandler.Update)           // Update attendance (fix records)
+						r.Delete("/{id}", attendanceHandler.Delete)        // Delete attendance
+						r.Post("/{id}/approve", attendanceHandler.Approve) // Approve attendance
+						r.Post("/{id}/reject", attendanceHandler.Reject)   // Reject attendance
+					})
 				})
-				r.Get("/my", attendanceHandler.GetMyAttendance)  // Get my attendance records
-				r.Post("/clock-in", attendanceHandler.ClockIn)   // Clock in
-				r.Post("/clock-out", attendanceHandler.ClockOut) // Clock out
 			})
 
 			r.Route("/employees", func(r chi.Router) {
 				r.Get("/{id}", employeeHandler.GetEmployee) // Get single employee
 
-				// Manager+ routes
+				// Manager+ routes (requires invitation feature for creating employees)
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireManager)
-					r.Get("/", employeeHandler.ListEmployees)                           // List employees with filters
-					r.Get("/search", employeeHandler.SearchEmployees)                   // Autocomplete search
-					r.Post("/", employeeHandler.CreateEmployee)                         // Create employee (multipart)
+					r.Get("/", employeeHandler.ListEmployees)         // List employees with filters
+					r.Get("/search", employeeHandler.SearchEmployees) // Autocomplete search
+
+					// Create employee requires invitation feature + employee slot check
+					r.Group(func(r chi.Router) {
+						r.Use(subscriptionMiddleware.RequireFeature(middleware.FeatureInvitation))
+						r.Use(subscriptionMiddleware.RequireCanAddEmployee)
+						r.Post("/", employeeHandler.CreateEmployee) // Create employee (multipart)
+					})
+
 					r.Put("/{id}", employeeHandler.UpdateEmployee)                      // Update employee
 					r.Delete("/{id}", employeeHandler.DeleteEmployee)                   // Soft delete employee
 					r.Post("/{id}/inactivate", employeeHandler.InactivateEmployee)      // Inactivate employee
@@ -284,42 +335,47 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 			r.Route("/payroll", func(r chi.Router) {
 				r.Use(middleware.RequireManager)
 
-				// Settings
+				// Read operations - available to all subscriptions
 				r.Get("/settings", payrollHandler.GetSettings)
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireOwner)
-					r.Put("/settings", payrollHandler.UpdateSettings)
-				})
-
-				// Components
 				r.Get("/components", payrollHandler.ListComponents)
 				r.Get("/components/{id}", payrollHandler.GetComponent)
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireOwner)
-					r.Post("/components", payrollHandler.CreateComponent)
-					r.Put("/components/{id}", payrollHandler.UpdateComponent)
-					r.Delete("/components/{id}", payrollHandler.DeleteComponent)
-				})
-
-				// Employee Components
-				r.Post("/employees/{employeeId}/components", payrollHandler.AssignComponent)
 				r.Get("/employees/{employeeId}/components", payrollHandler.GetEmployeeComponents)
-				r.Put("/employee-components/{id}", payrollHandler.UpdateEmployeeComponent)
-				r.Delete("/employee-components/{id}", payrollHandler.RemoveEmployeeComponent)
-
-				// Payroll Records
-				r.Post("/generate", payrollHandler.GeneratePayroll)
 				r.Get("/records", payrollHandler.ListPayrollRecords)
 				r.Get("/records/{id}", payrollHandler.GetPayrollRecord)
-				r.Put("/records/{id}", payrollHandler.UpdatePayrollRecord)
-				r.Group(func(r chi.Router) {
-					r.Use(middleware.RequireOwner)
-					r.Delete("/records/{id}", payrollHandler.DeletePayrollRecord)
-					r.Post("/finalize", payrollHandler.FinalizePayroll)
-				})
-
-				// Summary
 				r.Get("/summary", payrollHandler.GetPayrollSummary)
+
+				// Write operations - require payroll feature
+				r.Group(func(r chi.Router) {
+					r.Use(subscriptionMiddleware.RequireFeature(middleware.FeaturePayroll))
+
+					// Settings (Owner only)
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Put("/settings", payrollHandler.UpdateSettings)
+					})
+
+					// Components (Owner only)
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Post("/components", payrollHandler.CreateComponent)
+						r.Put("/components/{id}", payrollHandler.UpdateComponent)
+						r.Delete("/components/{id}", payrollHandler.DeleteComponent)
+					})
+
+					// Employee Components
+					r.Post("/employees/{employeeId}/components", payrollHandler.AssignComponent)
+					r.Put("/employee-components/{id}", payrollHandler.UpdateEmployeeComponent)
+					r.Delete("/employee-components/{id}", payrollHandler.RemoveEmployeeComponent)
+
+					// Payroll Records
+					r.Post("/generate", payrollHandler.GeneratePayroll)
+					r.Put("/records/{id}", payrollHandler.UpdatePayrollRecord)
+					r.Group(func(r chi.Router) {
+						r.Use(middleware.RequireOwner)
+						r.Delete("/records/{id}", payrollHandler.DeletePayrollRecord)
+						r.Post("/finalize", payrollHandler.FinalizePayroll)
+					})
+				})
 			})
 
 			// Dashboard Routes (Manager+)
@@ -361,13 +417,32 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 				r.Put("/preferences", notificationHandler.UpdatePreference)
 			})
 
-			// Report Routes (Manager+)
+			// Report Routes (Manager+) - Read-only, available to all subscriptions
 			r.Route("/reports", func(r chi.Router) {
 				r.Use(middleware.RequireManager)
+
 				r.Get("/attendance", reportHandler.GetMonthlyAttendanceReport)
 				r.Get("/payroll", reportHandler.GetPayrollSummaryReport)
 				r.Get("/leave-balance", reportHandler.GetLeaveBalanceReport)
 				r.Get("/new-hires", reportHandler.GetNewHireReport)
+			})
+
+			// Subscription Routes
+			r.Route("/subscription", func(r chi.Router) {
+				// Authenticated routes - view subscription and invoices
+				r.Get("/my", subscriptionHandler.GetMySubscription)
+				r.Get("/invoices", subscriptionHandler.GetInvoices)
+				r.Get("/invoices/{id}", subscriptionHandler.GetInvoiceByID)
+
+				// Owner-only routes - manage subscription
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireOwner)
+					r.Post("/checkout", subscriptionHandler.Checkout)
+					r.Post("/upgrade", subscriptionHandler.UpgradePlan)
+					r.Post("/downgrade", subscriptionHandler.DowngradePlan)
+					r.Post("/cancel", subscriptionHandler.CancelSubscription)
+					r.Post("/seats", subscriptionHandler.ChangeSeats)
+				})
 			})
 
 		})

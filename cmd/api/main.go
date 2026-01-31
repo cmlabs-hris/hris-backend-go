@@ -8,12 +8,15 @@ import (
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/config"
 	appHTTP "github.com/cmlabs-hris/hris-backend-go/internal/handler/http"
+	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/middleware"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/cron"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/oauth"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/sse"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/storage"
+	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/xendit"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	attendanceService "github.com/cmlabs-hris/hris-backend-go/internal/service/attendance"
 	serviceAuth "github.com/cmlabs-hris/hris-backend-go/internal/service/auth"
@@ -29,6 +32,7 @@ import (
 	payrollService "github.com/cmlabs-hris/hris-backend-go/internal/service/payroll"
 	reportService "github.com/cmlabs-hris/hris-backend-go/internal/service/report"
 	scheduleService "github.com/cmlabs-hris/hris-backend-go/internal/service/schedule"
+	subscriptionService "github.com/cmlabs-hris/hris-backend-go/internal/service/subscription"
 )
 
 func main() {
@@ -68,6 +72,13 @@ func main() {
 	notificationRepo := postgresql.NewNotificationRepository(db)
 	reportRepo := postgresql.NewReportRepository(db)
 
+	// Subscription repositories
+	featureRepo := postgresql.NewFeatureRepository(db)
+	planRepo := postgresql.NewPlanRepository(db)
+	subscriptionRepo := postgresql.NewSubscriptionRepository(db)
+	invoiceRepo := postgresql.NewInvoiceRepository(db)
+	employeeCounter := postgresql.NewEmployeeCounter(db)
+
 	// Initialize SSE Hub for real-time notifications
 	sseHub := sse.NewHub()
 
@@ -98,7 +109,27 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to initialize email service:", err)
 	}
-	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository, passwordResetRepo, employeeRepo, emailService, cfg.App.FrontendURL)
+
+	// Initialize Xendit client
+	xenditClient := xendit.NewClient(cfg.Xendit)
+	webhookVerifier := xendit.NewWebhookVerifier(cfg.Xendit.WebhookToken)
+
+	// Initialize subscription service
+	subscriptionSvc := subscriptionService.NewSubscriptionService(
+		featureRepo,
+		planRepo,
+		subscriptionRepo,
+		invoiceRepo,
+		employeeCounter,
+		xenditClient,
+		db,
+		cfg,
+	)
+
+	// Initialize subscription middleware
+	subscriptionMiddleware := middleware.NewSubscriptionMiddleware(subscriptionSvc)
+
+	authService := serviceAuth.NewAuthService(db, userRepo, companyRepo, JWTService, JWTRepository, passwordResetRepo, employeeRepo, emailService, cfg.App.FrontendURL, subscriptionSvc)
 	companyService := serviceCompany.NewCompanyService(
 		db,
 		companyRepo,
@@ -113,6 +144,7 @@ func main() {
 		employeeRepo,
 		quotaService,
 		notificationRepo,
+		subscriptionSvc,
 	)
 	masterService := master.NewMasterService(branchRepo, gradeRepo, positionRepo)
 	notificationSvc := notificationService.NewNotificationService(notificationRepo, sseHub, notificationService.Config{
@@ -158,6 +190,7 @@ func main() {
 		fileService,
 		invitationService,
 		quotaService,
+		subscriptionSvc,
 	)
 	payrollSvc := payrollService.NewPayrollService(db, payrollRepo, employeeRepo, notificationSvc)
 	dashboardSvc := dashboardService.NewDashboardService(dashboardRepo)
@@ -177,6 +210,14 @@ func main() {
 	empDashboardHandler := appHTTP.NewEmployeeDashboardHandler(empDashboardSvc)
 	notificationHandler := appHTTP.NewNotificationHandler(notificationSvc, JWTService)
 	reportHandler := appHTTP.NewReportHandler(reportSvc)
+	subscriptionHandler := appHTTP.NewSubscriptionHandler(subscriptionSvc, webhookVerifier)
+
+	// Initialize cron scheduler
+	cronScheduler := cron.NewScheduler()
+	subscriptionJobs := cron.NewSubscriptionJobs(subscriptionSvc)
+	subscriptionJobs.RegisterJobs(cronScheduler)
+	go cronScheduler.Start()
+	defer cronScheduler.Stop()
 
 	router := appHTTP.NewRouter(
 		JWTService,
@@ -193,6 +234,8 @@ func main() {
 		empDashboardHandler,
 		notificationHandler,
 		reportHandler,
+		subscriptionHandler,
+		subscriptionMiddleware,
 		cfg.Storage.BasePath,
 	)
 
