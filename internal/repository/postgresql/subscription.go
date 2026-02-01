@@ -810,7 +810,7 @@ func (r *employeeCounter) CountActiveByCompanyID(ctx context.Context, companyID 
 	query := `
 		SELECT COUNT(*)
 		FROM employees
-		WHERE company_id = $1 AND status = 'active' AND deleted_at IS NULL
+		WHERE company_id = $1 AND employment_status = 'active' AND deleted_at IS NULL
 	`
 
 	var count int

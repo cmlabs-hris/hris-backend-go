@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -93,9 +94,9 @@ type StorageConfig struct {
 
 func Load() (*Config, error) {
 	err := godotenv.Load()
-	// if err != nil {
-	// 	log.Fatalf("Error loading .env file: %v", err)
-	// }
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
 
 	config := &Config{}
 
