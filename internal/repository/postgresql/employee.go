@@ -640,12 +640,14 @@ func (e *employeeRepositoryImpl) List(ctx context.Context, filter employee.Emplo
 			ws.name AS work_schedule_name,
 			p.name AS position_name,
 			g.name AS grade_name,
-			b.name AS branch_name
+			b.name AS branch_name,
+			u.email
 		FROM employees e
 		LEFT JOIN work_schedules ws ON e.work_schedule_id = ws.id
 		LEFT JOIN positions p ON e.position_id = p.id
 		LEFT JOIN grades g ON e.grade_id = g.id
 		LEFT JOIN branches b ON e.branch_id = b.id
+		LEFT JOIN users u ON e.user_id = u.id
 		WHERE %s
 		ORDER BY %s %s
 		LIMIT $%d OFFSET $%d
@@ -671,6 +673,7 @@ func (e *employeeRepositoryImpl) List(ctx context.Context, filter employee.Emplo
 			&emp.BankName, &emp.BankAccountHolderName, &emp.BankAccountNumber,
 			&emp.BaseSalary, &emp.CreatedAt, &emp.UpdatedAt, &emp.DeletedAt,
 			&emp.WorkScheduleName, &emp.PositionName, &emp.GradeName, &emp.BranchName,
+			&emp.Email,
 		)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to scan employee: %w", err)
