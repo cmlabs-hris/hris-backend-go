@@ -123,7 +123,14 @@ func (s *subscriptionService) GetMySubscription(ctx context.Context, companyID s
 		}
 		return subscription.SubscriptionResponse{}, fmt.Errorf("get subscription: %w", err)
 	}
-	return toSubscriptionResponse(sub), nil
+
+	// Count active employees for used_seats
+	usedSeats, err := s.employeeCounter.CountActiveByCompanyID(ctx, companyID)
+	if err != nil {
+		return subscription.SubscriptionResponse{}, fmt.Errorf("count active employees: %w", err)
+	}
+
+	return toSubscriptionResponse(sub, usedSeats), nil
 }
 
 func (s *subscriptionService) CreateTrialSubscription(ctx context.Context, companyID string) (subscription.Subscription, error) {
@@ -1114,7 +1121,7 @@ func toFeatureResponse(feature subscription.Feature) subscription.FeatureRespons
 	}
 }
 
-func toSubscriptionResponse(sub subscription.Subscription) subscription.SubscriptionResponse {
+func toSubscriptionResponse(sub subscription.Subscription, usedSeats int) subscription.SubscriptionResponse {
 	// Convert dates to RFC3339 strings
 	periodStart := sub.CurrentPeriodStart.Format(time.RFC3339)
 	periodEnd := sub.CurrentPeriodEnd.Format(time.RFC3339)
@@ -1135,6 +1142,7 @@ func toSubscriptionResponse(sub subscription.Subscription) subscription.Subscrip
 		ID:                 sub.ID,
 		Status:             sub.Status,
 		MaxSeats:           sub.MaxSeats,
+		UsedSeats:          usedSeats,
 		CurrentPeriodStart: periodStart,
 		CurrentPeriodEnd:   periodEnd,
 		TrialEndsAt:        trialEndsAt,
