@@ -386,20 +386,15 @@ func (r *notificationRepository) GetPreference(ctx context.Context, userID strin
 func (r *notificationRepository) UpsertPreference(ctx context.Context, pref *notification.NotificationPreference) error {
 	q := GetQuerier(ctx, r.db)
 
-	if pref.ID == "" {
-		pref.ID = "uuidv7()"
-	}
-
 	query := `
 		INSERT INTO notification_preferences (id, user_id, notification_type, email_enabled, push_enabled, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		VALUES (uuidv7(), $1, $2, $3, $4, $5, $6)
 		ON CONFLICT (user_id, notification_type)
-		DO UPDATE SET email_enabled = $4, push_enabled = $5, updated_at = $7
+		DO UPDATE SET email_enabled = $3, push_enabled = $4, updated_at = $6
 	`
 
 	now := time.Now()
 	_, err := q.Exec(ctx, query,
-		pref.ID,
 		pref.UserID,
 		string(pref.NotificationType),
 		pref.EmailEnabled,
