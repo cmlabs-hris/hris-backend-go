@@ -46,8 +46,11 @@ type SubscriptionService interface {
 
 	// ==================== Seat Management ====================
 
-	// ChangeSeats changes the number of seats
-	ChangeSeats(ctx context.Context, companyID string, req ChangeSeatRequest) (InvoiceResponse, error)
+	// ChangeSeats changes the number of seats (upsell: prorated payment, downsell: scheduled)
+	ChangeSeats(ctx context.Context, companyID string, req ChangeSeatRequest) (ChangeSeatResponse, error)
+
+	// CancelPendingInvoice cancels a pending invoice
+	CancelPendingInvoice(ctx context.Context, companyID string, invoiceID string) error
 
 	// CanAddEmployee checks if more employees can be added to the subscription
 	CanAddEmployee(ctx context.Context, companyID string) (bool, error)

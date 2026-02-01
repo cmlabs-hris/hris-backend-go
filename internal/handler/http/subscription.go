@@ -29,6 +29,7 @@ type SubscriptionHandler interface {
 	DowngradePlan(w http.ResponseWriter, r *http.Request)
 	CancelSubscription(w http.ResponseWriter, r *http.Request)
 	ChangeSeats(w http.ResponseWriter, r *http.Request)
+	CancelPendingInvoice(w http.ResponseWriter, r *http.Request)
 }
 
 type subscriptionHandlerImpl struct {
@@ -261,6 +262,32 @@ func (h *subscriptionHandlerImpl) ChangeSeats(w http.ResponseWriter, r *http.Req
 	}
 
 	response.Success(w, result)
+}
+
+// CancelPendingInvoice cancels a pending invoice
+// DELETE /api/v1/subscription/invoices/{id} - Requires owner role
+func (h *subscriptionHandlerImpl) CancelPendingInvoice(w http.ResponseWriter, r *http.Request) {
+	companyID, ok := getCompanyIDFromContext(r)
+	if !ok {
+		response.Forbidden(w, "no company associated with this user")
+		return
+	}
+
+	invoiceID := chi.URLParam(r, "id")
+	if invoiceID == "" {
+		response.BadRequest(w, "invoice_id is required", nil)
+		return
+	}
+
+	err := h.subscriptionService.CancelPendingInvoice(r.Context(), companyID, invoiceID)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.Success(w, map[string]string{
+		"message": "invoice cancelled successfully",
+	})
 }
 
 // HandleWebhook processes Xendit webhook callbacks

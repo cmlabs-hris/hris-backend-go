@@ -13,6 +13,7 @@ import (
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/xendit"
 	"github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
 	"github.com/jackc/pgx/v5"
+	"github.com/shopspring/decimal"
 )
 
 // Constants
@@ -320,21 +321,33 @@ func (s *subscriptionService) handlePaymentSuccess(ctx context.Context, invoice 
 		return fmt.Errorf("get plan by name: %w", err)
 	}
 
-	// Update subscription
-	sub.PlanID = plan.ID
+	// Update subscription based on invoice type
+	if invoice.IsProrated {
+		// Prorated invoice (mid-cycle seat increase) - update seats only, don't extend period
+		sub.MaxSeats = invoice.SeatCountSnapshot
+		sub.PendingMaxSeats = nil // Clear any pending downsell
+		log.Printf("Prorated payment success: Company %s, Seats %d → %d (period unchanged)",
+			invoice.CompanyID, sub.MaxSeats, invoice.SeatCountSnapshot)
+	} else {
+		// Regular renewal or upgrade - update seats AND extend period
+		sub.PlanID = plan.ID
+		sub.MaxSeats = invoice.SeatCountSnapshot
+		sub.CurrentPeriodStart = invoice.PeriodStart
+		sub.CurrentPeriodEnd = invoice.PeriodEnd
+		sub.BillingCycle = subscription.BillingCycle(invoice.BillingCycleSnapshot)
+		sub.PendingPlanID = nil
+		sub.PendingMaxSeats = nil
+		sub.TrialEndsAt = nil
+		log.Printf("Payment success: Company %s, Plan %s, Seats %d",
+			invoice.CompanyID, invoice.PlanSnapshotName, invoice.SeatCountSnapshot)
+	}
+
 	sub.Status = subscription.StatusActive
-	sub.MaxSeats = invoice.SeatCountSnapshot
-	sub.CurrentPeriodStart = invoice.PeriodStart
-	sub.CurrentPeriodEnd = invoice.PeriodEnd
-	sub.BillingCycle = subscription.BillingCycle(invoice.BillingCycleSnapshot)
-	sub.PendingPlanID = nil
-	sub.TrialEndsAt = nil
 
 	if err := s.subscriptionRepo.Update(ctx, sub); err != nil {
 		return fmt.Errorf("update subscription: %w", err)
 	}
 
-	log.Printf("Payment success: Company %s, Plan %s, Seats %d", invoice.CompanyID, invoice.PlanSnapshotName, invoice.SeatCountSnapshot)
 	return nil
 }
 
@@ -734,46 +747,255 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, companyID 
 	return nil
 }
 
-// ChangeSeats changes the number of seats
-func (s *subscriptionService) ChangeSeats(ctx context.Context, companyID string, req subscription.ChangeSeatRequest) (subscription.InvoiceResponse, error) {
-	if err := req.Validate(); err != nil {
-		return subscription.InvoiceResponse{}, err
+// CancelPendingInvoice cancels a pending invoice
+func (s *subscriptionService) CancelPendingInvoice(ctx context.Context, companyID string, invoiceID string) error {
+	// Get subscription to verify ownership
+	sub, err := s.subscriptionRepo.GetByCompanyID(ctx, companyID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return subscription.ErrSubscriptionNotFound
+		}
+		return fmt.Errorf("get subscription: %w", err)
 	}
 
+	// Get invoice
+	invoice, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return subscription.ErrInvoiceNotFound
+		}
+		return fmt.Errorf("get invoice: %w", err)
+	}
+
+	// Validate invoice belongs to this company's subscription
+	if invoice.SubscriptionID != sub.ID {
+		return subscription.ErrInvoiceNotFound // Don't expose existence of other invoices
+	}
+
+	// Validate invoice is pending
+	if invoice.Status != subscription.InvoiceStatusPending {
+		return subscription.ErrInvoiceNotPending
+	}
+
+	// Use transaction for consistency
+	err = postgresql.WithTransaction(ctx, s.db, func(tx pgx.Tx) error {
+		txCtx := context.WithValue(ctx, "tx", tx)
+
+		// Void invoice in Xendit if xendit_invoice_id exists
+		if invoice.XenditInvoiceID != nil && *invoice.XenditInvoiceID != "" {
+			_, err := s.xenditClient.ExpireInvoice(*invoice.XenditInvoiceID)
+			if err != nil {
+				// Log warning but continue with DB update
+				log.Printf("Warning: Failed to expire Xendit invoice %s: %v", *invoice.XenditInvoiceID, err)
+			} else {
+				log.Printf("Expired Xendit invoice %s upon user cancellation", *invoice.XenditInvoiceID)
+			}
+		}
+
+		// Update invoice status to expired
+		if err := s.invoiceRepo.UpdateStatus(txCtx, invoice.ID, subscription.InvoiceStatusExpired); err != nil {
+			return fmt.Errorf("update invoice status: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("cancel invoice: %w", err)
+	}
+
+	log.Printf("Cancelled pending invoice %s for company %s", invoiceID, companyID)
+	return nil
+}
+
+// ChangeSeats changes the number of seats
+func (s *subscriptionService) ChangeSeats(ctx context.Context, companyID string, req subscription.ChangeSeatRequest) (subscription.ChangeSeatResponse, error) {
+	if err := req.Validate(); err != nil {
+		return subscription.ChangeSeatResponse{}, err
+	}
+
+	// Get subscription with features
 	sub, err := s.subscriptionRepo.GetByCompanyIDWithFeatures(ctx, companyID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return subscription.InvoiceResponse{}, subscription.ErrSubscriptionNotFound
+			return subscription.ChangeSeatResponse{}, subscription.ErrSubscriptionNotFound
 		}
-		return subscription.InvoiceResponse{}, fmt.Errorf("get subscription: %w", err)
+		return subscription.ChangeSeatResponse{}, fmt.Errorf("get subscription: %w", err)
 	}
 
-	// Validate seat count >= active employees
-	activeEmployees, err := s.employeeCounter.CountActiveByCompanyID(ctx, companyID)
+	// Validate not same as current seats
+	if req.SeatCount == sub.MaxSeats {
+		return subscription.ChangeSeatResponse{}, subscription.ErrSameAsCurrentSeats
+	}
+
+	// Validate seat count > 0
+	if req.SeatCount < 1 {
+		return subscription.ChangeSeatResponse{}, subscription.ErrInvalidSeatCount
+	}
+
+	// Check for pending invoices - block any seat changes if pending payment exists
+	pendingCount, err := s.invoiceRepo.CountPendingInvoicesBySubscription(ctx, sub.ID)
 	if err != nil {
-		return subscription.InvoiceResponse{}, fmt.Errorf("count employees: %w", err)
+		return subscription.ChangeSeatResponse{}, fmt.Errorf("count pending invoices: %w", err)
 	}
-	if req.SeatCount < activeEmployees {
-		return subscription.InvoiceResponse{}, subscription.ErrSeatsBelowActive
+	if pendingCount > 0 {
+		return subscription.ChangeSeatResponse{}, subscription.ErrPendingInvoiceExists
 	}
 
-	// Get current plan to check limits
+	// Get current plan
 	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
 	if err != nil {
-		return subscription.InvoiceResponse{}, fmt.Errorf("get plan: %w", err)
+		return subscription.ChangeSeatResponse{}, fmt.Errorf("get plan: %w", err)
 	}
 
+	// Check plan limits
 	if exceedsPlanMaxSeats(plan, req.SeatCount) {
-		return subscription.InvoiceResponse{}, subscription.ErrSeatLimitExceeded
+		return subscription.ChangeSeatResponse{}, subscription.ErrSeatLimitExceeded
 	}
 
-	// Update seat count directly for seat changes
-	if err := s.subscriptionRepo.UpdateMaxSeats(ctx, sub.ID, req.SeatCount); err != nil {
-		return subscription.InvoiceResponse{}, fmt.Errorf("update seats: %w", err)
+	now := time.Now()
+
+	// UPSELL: Adding seats (prorated, immediate after payment)
+	if req.SeatCount > sub.MaxSeats {
+		// Block upsell during grace period (past_due status)
+		if sub.Status == subscription.StatusPastDue {
+			return subscription.ChangeSeatResponse{}, subscription.ErrCannotUpgradeDuringGracePeriod
+		}
+
+		// Calculate prorated amount
+		daysRemaining := sub.CurrentPeriodEnd.Sub(now).Hours() / 24
+		var totalDays float64
+		if sub.BillingCycle == subscription.BillingCycleYearly {
+			totalDays = 365
+		} else {
+			totalDays = 30
+		}
+
+		seatDifference := req.SeatCount - sub.MaxSeats
+		proratedAmount := plan.PricePerSeat.
+			Mul(decimal.NewFromInt(int64(seatDifference))).
+			Mul(decimal.NewFromFloat(daysRemaining / totalDays))
+
+		// Calculate invoice expiry matching subscription remaining days (minimum 24 hours)
+		expiryHours := daysRemaining * 24
+		if expiryHours < 24 {
+			expiryHours = 24
+		}
+		invoiceExpirySecs := int(expiryHours * 3600)
+
+		description := fmt.Sprintf("Additional Seats (Prorated) - %s Plan: %d → %d seats", plan.Name, sub.MaxSeats, req.SeatCount)
+
+		// Create invoice with is_prorated=true
+		invoice := subscription.Invoice{
+			CompanyID:            companyID,
+			SubscriptionID:       sub.ID,
+			Amount:               proratedAmount,
+			IsProrated:           true,
+			PlanSnapshotName:     plan.Name,
+			PricePerSeatSnapshot: plan.PricePerSeat,
+			SeatCountSnapshot:    req.SeatCount, // New seat count
+			BillingCycleSnapshot: sub.BillingCycle,
+			PeriodStart:          sub.CurrentPeriodStart,
+			PeriodEnd:            sub.CurrentPeriodEnd,
+			Status:               subscription.InvoiceStatusPending,
+			Description:          &description,
+			IssueDate:            now,
+		}
+
+		var createdInvoice subscription.Invoice
+		var xenditResp *xendit.InvoiceResponse
+
+		// Use transaction for multi-step operation
+		err = postgresql.WithTransaction(ctx, s.db, func(tx pgx.Tx) error {
+			txCtx := context.WithValue(ctx, "tx", tx)
+
+			// Get payer email from company
+			// Note: You may need to add this to the company domain if not already present
+			payerEmail := fmt.Sprintf("billing+%s@company.com", companyID) // Placeholder
+
+			// Create Xendit invoice
+			xenditReq := xendit.CreateInvoiceRequest{
+				ExternalID:         fmt.Sprintf("seat-up-%s-%d", sub.ID, now.Unix()),
+				Amount:             proratedAmount,
+				PayerEmail:         payerEmail,
+				Description:        description,
+				Currency:           "IDR",
+				InvoiceDuration:    invoiceExpirySecs,
+				SuccessRedirectURL: s.cfg.Xendit.SuccessRedirect,
+				FailureRedirectURL: s.cfg.Xendit.FailureRedirect,
+			}
+
+			xResp, err := s.xenditClient.CreateInvoice(xenditReq)
+			if err != nil {
+				return fmt.Errorf("create xendit invoice: %w", err)
+			}
+			xenditResp = xResp
+
+			// Set Xendit details
+			invoice.XenditInvoiceID = &xenditResp.ID
+			invoice.XenditInvoiceURL = &xenditResp.InvoiceURL
+			invoice.XenditExpiryDate = &xenditResp.ExpiryDate
+
+			// Save invoice to database
+			created, err := s.invoiceRepo.Create(txCtx, invoice)
+			if err != nil {
+				// Try to expire the Xendit invoice on failure
+				_, _ = s.xenditClient.ExpireInvoice(*invoice.XenditInvoiceID)
+				return fmt.Errorf("create invoice: %w", err)
+			}
+			createdInvoice = created
+
+			// Clear pending_max_seats if exists (immediate action wins)
+			if sub.PendingMaxSeats != nil {
+				if err := s.subscriptionRepo.SetPendingMaxSeats(txCtx, sub.ID, nil); err != nil {
+					return fmt.Errorf("clear pending seats: %w", err)
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return subscription.ChangeSeatResponse{}, fmt.Errorf("upsell transaction: %w", err)
+		}
+
+		// Return response with invoice for payment
+		invoiceResp := createdInvoice.ToResponse()
+		return subscription.ChangeSeatResponse{
+			Invoice:   &invoiceResp,
+			Message:   fmt.Sprintf("Payment required to add %d seats. Seats will be applied after payment.", seatDifference),
+			IsPending: false,
+		}, nil
 	}
 
-	// Return empty invoice response (no payment required for seat reduction)
-	return subscription.InvoiceResponse{}, nil
+	// DOWNSELL: Reducing seats (scheduled for next period, no payment)
+	if req.SeatCount < sub.MaxSeats {
+		// Validate: new seat count must accommodate active employees
+		activeEmployees, err := s.employeeCounter.CountActiveByCompanyID(ctx, companyID)
+		if err != nil {
+			return subscription.ChangeSeatResponse{}, fmt.Errorf("count employees: %w", err)
+		}
+		if req.SeatCount < activeEmployees {
+			return subscription.ChangeSeatResponse{}, subscription.ErrSeatsBelowActiveEmployees
+		}
+
+		// Set pending_max_seats for application at next renewal
+		pendingSeats := req.SeatCount
+		if err := s.subscriptionRepo.SetPendingMaxSeats(ctx, sub.ID, &pendingSeats); err != nil {
+			return subscription.ChangeSeatResponse{}, fmt.Errorf("set pending seats: %w", err)
+		}
+
+		periodEndStr := sub.CurrentPeriodEnd.Format("2006-01-02")
+		return subscription.ChangeSeatResponse{
+			Invoice:         nil,
+			Message:         fmt.Sprintf("Seat count will be reduced from %d to %d at next renewal on %s. No charge.", sub.MaxSeats, req.SeatCount, periodEndStr),
+			IsPending:       true,
+			PendingMaxSeats: &pendingSeats,
+		}, nil
+	}
+
+	// Should never reach here
+	return subscription.ChangeSeatResponse{}, fmt.Errorf("unexpected state")
 }
 
 // UpdateExpiredSubscriptions updates subscription statuses based on period end
@@ -796,6 +1018,31 @@ func (s *subscriptionService) CleanupStaleInvoices(ctx context.Context) error {
 
 // ApplyPendingDowngrades applies pending plan downgrades for subscriptions at period end
 func (s *subscriptionService) ApplyPendingDowngrades(ctx context.Context) error {
+	// Handle pending seat downgrades
+	seatSubs, err := s.subscriptionRepo.ListSubscriptionsWithPendingSeats(ctx)
+	if err != nil {
+		log.Printf("Cron: Failed to list pending seat changes: %v", err)
+	} else if len(seatSubs) > 0 {
+		applied := 0
+		for _, sub := range seatSubs {
+			oldSeats := sub.MaxSeats
+			newSeats := *sub.PendingMaxSeats
+
+			if err := s.subscriptionRepo.ApplyPendingMaxSeats(ctx, sub.ID); err != nil {
+				log.Printf("Cron: Failed to apply pending seat downgrade for subscription %s: %v", sub.ID, err)
+				continue
+			}
+
+			log.Printf("Cron: Applied pending seat downgrade for subscription %s from %d to %d seats",
+				sub.ID, oldSeats, newSeats)
+			applied++
+		}
+		if applied > 0 {
+			log.Printf("Cron: Applied %d pending seat downgrades", applied)
+		}
+	}
+
+	// Handle pending plan downgrades
 	subs, err := s.subscriptionRepo.ListWithPendingDowngrade(ctx)
 	if err != nil {
 		return fmt.Errorf("list pending downgrades: %w", err)

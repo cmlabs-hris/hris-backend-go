@@ -318,6 +318,8 @@ func HandleError(w http.ResponseWriter, err error) {
 		Conflict(w, "Company already has an active subscription")
 	case errors.Is(err, subscription.ErrInvalidSubscriptionState):
 		BadRequest(w, "Invalid subscription state for this operation", nil)
+	case errors.Is(err, subscription.ErrTrialNotAllowed):
+		BadRequest(w, subscription.ErrTrialNotAllowed.Error(), nil)
 
 	// Plan errors
 	case errors.Is(err, subscription.ErrPlanNotFound):

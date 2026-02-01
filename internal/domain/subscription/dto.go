@@ -136,6 +136,7 @@ type SubscriptionResponse struct {
 	Status             SubscriptionStatus `json:"status"`
 	Plan               PlanResponse       `json:"plan"`
 	MaxSeats           int                `json:"max_seats"`
+	PendingMaxSeats    *int               `json:"pending_max_seats,omitempty"`
 	UsedSeats          int                `json:"used_seats"`
 	CurrentPeriodStart string             `json:"current_period_start"`
 	CurrentPeriodEnd   string             `json:"current_period_end"`
@@ -151,6 +152,7 @@ type InvoiceResponse struct {
 	ID             string          `json:"id"`
 	Amount         decimal.Decimal `json:"amount"`
 	Status         InvoiceStatus   `json:"status"`
+	IsProrated     bool            `json:"is_prorated"`
 	PlanName       string          `json:"plan_name"`
 	SeatCount      int             `json:"seat_count"`
 	PricePerSeat   decimal.Decimal `json:"price_per_seat"`
@@ -170,6 +172,14 @@ type CheckoutResponse struct {
 	Invoice    InvoiceResponse `json:"invoice"`
 	PaymentURL string          `json:"payment_url"`
 	ExpiresAt  string          `json:"expires_at"`
+}
+
+// ChangeSeatResponse represents the response after changing seat count
+type ChangeSeatResponse struct {
+	Invoice         *InvoiceResponse `json:"invoice,omitempty"`
+	Message         string           `json:"message"`
+	IsPending       bool             `json:"is_pending"`
+	PendingMaxSeats *int             `json:"pending_max_seats,omitempty"`
 }
 
 // ==================== Webhook DTOs ====================
@@ -233,6 +243,7 @@ func (s *Subscription) ToResponse(usedSeats int, pendingPlan *Plan) Subscription
 		Status:             s.Status,
 		Plan:               planResp,
 		MaxSeats:           s.MaxSeats,
+		PendingMaxSeats:    s.PendingMaxSeats,
 		UsedSeats:          usedSeats,
 		CurrentPeriodStart: s.CurrentPeriodStart.Format("2006-01-02T15:04:05Z07:00"),
 		CurrentPeriodEnd:   s.CurrentPeriodEnd.Format("2006-01-02T15:04:05Z07:00"),
@@ -260,6 +271,7 @@ func (i *Invoice) ToResponse() InvoiceResponse {
 		ID:           i.ID,
 		Amount:       i.Amount,
 		Status:       i.Status,
+		IsProrated:   i.IsProrated,
 		PlanName:     i.PlanSnapshotName,
 		SeatCount:    i.SeatCountSnapshot,
 		PricePerSeat: i.PricePerSeatSnapshot,

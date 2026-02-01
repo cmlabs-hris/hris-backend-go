@@ -49,6 +49,12 @@ type SubscriptionRepository interface {
 	// UpdateMaxSeats updates subscription max seats
 	UpdateMaxSeats(ctx context.Context, id string, maxSeats int) error
 
+	// SetPendingMaxSeats sets or clears pending seat count
+	SetPendingMaxSeats(ctx context.Context, id string, pendingMaxSeats *int) error
+
+	// ApplyPendingMaxSeats applies pending seat count to max_seats
+	ApplyPendingMaxSeats(ctx context.Context, id string) error
+
 	// UpdatePlan updates subscription plan (for upgrade)
 	UpdatePlan(ctx context.Context, id string, planID string, maxSeats int, periodEnd interface{}) error
 
@@ -63,6 +69,9 @@ type SubscriptionRepository interface {
 
 	// ListWithPendingDowngrade retrieves subscriptions with pending downgrades
 	ListWithPendingDowngrade(ctx context.Context) ([]Subscription, error)
+
+	// ListSubscriptionsWithPendingSeats retrieves subscriptions with pending seat changes that are ready to apply
+	ListSubscriptionsWithPendingSeats(ctx context.Context) ([]Subscription, error)
 
 	// ApplyPendingPlan applies the pending plan to the subscription
 	ApplyPendingPlan(ctx context.Context, id string) error
@@ -102,6 +111,9 @@ type InvoiceRepository interface {
 
 	// HasPendingInvoice checks if company has a pending invoice
 	HasPendingInvoice(ctx context.Context, companyID string) (bool, error)
+
+	// CountPendingInvoicesBySubscription counts pending invoices for a subscription
+	CountPendingInvoicesBySubscription(ctx context.Context, subscriptionID string) (int, error)
 
 	// ExpireStaleInvoices marks old pending invoices as expired
 	ExpireStaleInvoices(ctx context.Context, olderThan interface{}) (int64, error)

@@ -442,6 +442,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 					r.Post("/downgrade", subscriptionHandler.DowngradePlan)
 					r.Post("/cancel", subscriptionHandler.CancelSubscription)
 					r.Post("/seats", subscriptionHandler.ChangeSeats)
+					r.Delete("/invoices/{id}", subscriptionHandler.CancelPendingInvoice)
 				})
 			})
 

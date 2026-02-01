@@ -215,7 +215,7 @@ func (r *subscriptionRepository) GetByID(ctx context.Context, id string) (subscr
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, plan_id, status, max_seats, current_period_start, current_period_end,
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
 			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
 		FROM subscriptions
 		WHERE id = $1
@@ -223,7 +223,7 @@ func (r *subscriptionRepository) GetByID(ctx context.Context, id string) (subscr
 
 	var s subscription.Subscription
 	err := q.QueryRow(ctx, query, id).Scan(
-		&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats,
+		&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
 		&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
 		&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -234,7 +234,7 @@ func (r *subscriptionRepository) GetByCompanyID(ctx context.Context, companyID s
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, plan_id, status, max_seats, current_period_start, current_period_end,
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
 			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
 		FROM subscriptions
 		WHERE company_id = $1
@@ -242,7 +242,7 @@ func (r *subscriptionRepository) GetByCompanyID(ctx context.Context, companyID s
 
 	var s subscription.Subscription
 	err := q.QueryRow(ctx, query, companyID).Scan(
-		&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats,
+		&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
 		&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
 		&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
 	)
@@ -374,7 +374,7 @@ func (r *subscriptionRepository) ListExpiring(ctx context.Context, before interf
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, plan_id, status, max_seats, current_period_start, current_period_end,
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
 			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
 		FROM subscriptions
 		WHERE current_period_end < $1 AND status IN ('trial', 'active')
@@ -391,7 +391,7 @@ func (r *subscriptionRepository) ListExpiring(ctx context.Context, before interf
 	for rows.Next() {
 		var s subscription.Subscription
 		if err := rows.Scan(
-			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats,
+			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
 			&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
 			&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
@@ -406,7 +406,7 @@ func (r *subscriptionRepository) ListByStatus(ctx context.Context, status subscr
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, plan_id, status, max_seats, current_period_start, current_period_end,
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
 			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
 		FROM subscriptions
 		WHERE status = $1
@@ -423,7 +423,7 @@ func (r *subscriptionRepository) ListByStatus(ctx context.Context, status subscr
 	for rows.Next() {
 		var s subscription.Subscription
 		if err := rows.Scan(
-			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats,
+			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
 			&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
 			&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
@@ -464,11 +464,66 @@ func (r *subscriptionRepository) UpdateMaxSeats(ctx context.Context, id string, 
 	return err
 }
 
+func (r *subscriptionRepository) SetPendingMaxSeats(ctx context.Context, id string, pendingMaxSeats *int) error {
+	q := GetQuerier(ctx, r.db)
+
+	query := `UPDATE subscriptions SET pending_max_seats = $2, updated_at = NOW() WHERE id = $1`
+	_, err := q.Exec(ctx, query, id, pendingMaxSeats)
+	return err
+}
+
+func (r *subscriptionRepository) ApplyPendingMaxSeats(ctx context.Context, id string) error {
+	q := GetQuerier(ctx, r.db)
+
+	// Apply the pending seat count and clear pending_max_seats
+	query := `
+		UPDATE subscriptions 
+		SET max_seats = pending_max_seats, pending_max_seats = NULL, updated_at = NOW() 
+		WHERE id = $1 AND pending_max_seats IS NOT NULL
+	`
+	_, err := q.Exec(ctx, query, id)
+	return err
+}
+
+func (r *subscriptionRepository) ListSubscriptionsWithPendingSeats(ctx context.Context) ([]subscription.Subscription, error) {
+	q := GetQuerier(ctx, r.db)
+
+	query := `
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
+			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
+		FROM subscriptions
+		WHERE pending_max_seats IS NOT NULL 
+		  AND current_period_end <= NOW()
+		  AND status IN ('active', 'cancelled')
+		ORDER BY current_period_end
+	`
+
+	rows, err := q.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subs []subscription.Subscription
+	for rows.Next() {
+		var s subscription.Subscription
+		if err := rows.Scan(
+			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
+			&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
+			&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		subs = append(subs, s)
+	}
+	return subs, nil
+}
+
 func (r *subscriptionRepository) ListWithPendingDowngrade(ctx context.Context) ([]subscription.Subscription, error) {
 	q := GetQuerier(ctx, r.db)
 
 	query := `
-		SELECT id, company_id, plan_id, status, max_seats, current_period_start, current_period_end,
+		SELECT id, company_id, plan_id, status, max_seats, pending_max_seats, current_period_start, current_period_end,
 			   trial_ends_at, pending_plan_id, billing_cycle, auto_renew, created_at, updated_at
 		FROM subscriptions
 		WHERE pending_plan_id IS NOT NULL
@@ -485,7 +540,7 @@ func (r *subscriptionRepository) ListWithPendingDowngrade(ctx context.Context) (
 	for rows.Next() {
 		var s subscription.Subscription
 		if err := rows.Scan(
-			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats,
+			&s.ID, &s.CompanyID, &s.PlanID, &s.Status, &s.MaxSeats, &s.PendingMaxSeats,
 			&s.CurrentPeriodStart, &s.CurrentPeriodEnd, &s.TrialEndsAt,
 			&s.PendingPlanID, &s.BillingCycle, &s.AutoRenew, &s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
@@ -524,7 +579,7 @@ func (r *invoiceRepository) GetByID(ctx context.Context, id string) (subscriptio
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -534,7 +589,7 @@ func (r *invoiceRepository) GetByID(ctx context.Context, id string) (subscriptio
 	var inv subscription.Invoice
 	err := q.QueryRow(ctx, query, id).Scan(
 		&inv.ID, &inv.CompanyID, &inv.SubscriptionID, &inv.XenditInvoiceID, &inv.XenditInvoiceURL, &inv.XenditExpiryDate,
-		&inv.Amount, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
+		&inv.Amount, &inv.IsProrated, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
 		&inv.PeriodStart, &inv.PeriodEnd, &inv.Status, &inv.IssueDate, &inv.PaidAt, &inv.PaymentMethod, &inv.PaymentChannel,
 		&inv.Description, &inv.Notes, &inv.CreatedAt, &inv.UpdatedAt,
 	)
@@ -546,7 +601,7 @@ func (r *invoiceRepository) GetByXenditID(ctx context.Context, xenditID string) 
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -556,7 +611,7 @@ func (r *invoiceRepository) GetByXenditID(ctx context.Context, xenditID string) 
 	var inv subscription.Invoice
 	err := q.QueryRow(ctx, query, xenditID).Scan(
 		&inv.ID, &inv.CompanyID, &inv.SubscriptionID, &inv.XenditInvoiceID, &inv.XenditInvoiceURL, &inv.XenditExpiryDate,
-		&inv.Amount, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
+		&inv.Amount, &inv.IsProrated, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
 		&inv.PeriodStart, &inv.PeriodEnd, &inv.Status, &inv.IssueDate, &inv.PaidAt, &inv.PaymentMethod, &inv.PaymentChannel,
 		&inv.Description, &inv.Notes, &inv.CreatedAt, &inv.UpdatedAt,
 	)
@@ -568,15 +623,15 @@ func (r *invoiceRepository) Create(ctx context.Context, inv subscription.Invoice
 
 	query := `
 		INSERT INTO invoices (company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-							  amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
-							  period_start, period_end, status, description, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::billing_cycle_enum, $11, $12, $13::invoice_status, $14, $15)
+						  amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+						  period_start, period_end, status, description, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::billing_cycle_enum, $12, $13, $14::invoice_status, $15, $16)
 		RETURNING id, issue_date, created_at, updated_at
 	`
 
 	err := q.QueryRow(ctx, query,
 		inv.CompanyID, inv.SubscriptionID, inv.XenditInvoiceID, inv.XenditInvoiceURL, inv.XenditExpiryDate,
-		inv.Amount, inv.PlanSnapshotName, inv.PricePerSeatSnapshot, inv.SeatCountSnapshot, string(inv.BillingCycleSnapshot),
+		inv.Amount, inv.IsProrated, inv.PlanSnapshotName, inv.PricePerSeatSnapshot, inv.SeatCountSnapshot, string(inv.BillingCycleSnapshot),
 		inv.PeriodStart, inv.PeriodEnd, string(inv.Status), inv.Description, inv.Notes,
 	).Scan(&inv.ID, &inv.IssueDate, &inv.CreatedAt, &inv.UpdatedAt)
 
@@ -608,7 +663,7 @@ func (r *invoiceRepository) ListByCompanyID(ctx context.Context, companyID strin
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -624,7 +679,7 @@ func (r *invoiceRepository) ListBySubscriptionID(ctx context.Context, subscripti
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -640,7 +695,7 @@ func (r *invoiceRepository) ListPending(ctx context.Context) ([]subscription.Inv
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -656,7 +711,7 @@ func (r *invoiceRepository) ListPendingOlderThan(ctx context.Context, olderThan 
 
 	query := `
 		SELECT id, company_id, subscription_id, xendit_invoice_id, xendit_invoice_url, xendit_expiry_date,
-			   amount, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
+			   amount, is_prorated, plan_snapshot_name, price_per_seat_snapshot, seat_count_snapshot, billing_cycle_snapshot,
 			   period_start, period_end, status, issue_date, paid_at, payment_method, payment_channel,
 			   description, notes, created_at, updated_at
 		FROM invoices
@@ -674,6 +729,15 @@ func (r *invoiceRepository) HasPendingInvoice(ctx context.Context, companyID str
 	var exists bool
 	err := q.QueryRow(ctx, query, companyID).Scan(&exists)
 	return exists, err
+}
+
+func (r *invoiceRepository) CountPendingInvoicesBySubscription(ctx context.Context, subscriptionID string) (int, error) {
+	q := GetQuerier(ctx, r.db)
+
+	query := `SELECT COUNT(*) FROM invoices WHERE subscription_id = $1 AND status = 'pending'`
+	var count int
+	err := q.QueryRow(ctx, query, subscriptionID).Scan(&count)
+	return count, err
 }
 
 func (r *invoiceRepository) ExpireStaleInvoices(ctx context.Context, olderThan interface{}) (int64, error) {
@@ -719,7 +783,7 @@ func (r *invoiceRepository) parseInvoiceRows(rows pgx.Rows) ([]subscription.Invo
 		var inv subscription.Invoice
 		if err := rows.Scan(
 			&inv.ID, &inv.CompanyID, &inv.SubscriptionID, &inv.XenditInvoiceID, &inv.XenditInvoiceURL, &inv.XenditExpiryDate,
-			&inv.Amount, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
+			&inv.Amount, &inv.IsProrated, &inv.PlanSnapshotName, &inv.PricePerSeatSnapshot, &inv.SeatCountSnapshot, &inv.BillingCycleSnapshot,
 			&inv.PeriodStart, &inv.PeriodEnd, &inv.Status, &inv.IssueDate, &inv.PaidAt, &inv.PaymentMethod, &inv.PaymentChannel,
 			&inv.Description, &inv.Notes, &inv.CreatedAt, &inv.UpdatedAt,
 		); err != nil {
@@ -746,7 +810,7 @@ func (r *employeeCounter) CountActiveByCompanyID(ctx context.Context, companyID 
 	query := `
 		SELECT COUNT(*)
 		FROM employees
-		WHERE company_id = $1 AND employment_status = 'active' AND deleted_at IS NULL
+		WHERE company_id = $1 AND status = 'active' AND deleted_at IS NULL
 	`
 
 	var count int

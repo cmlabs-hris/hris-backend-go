@@ -71,6 +71,7 @@ type Subscription struct {
 	PlanID             string             `json:"plan_id"`
 	Status             SubscriptionStatus `json:"status"`
 	MaxSeats           int                `json:"max_seats"`
+	PendingMaxSeats    *int               `json:"pending_max_seats,omitempty"`
 	CurrentPeriodStart time.Time          `json:"current_period_start"`
 	CurrentPeriodEnd   time.Time          `json:"current_period_end"`
 	TrialEndsAt        *time.Time         `json:"trial_ends_at,omitempty"`
@@ -94,6 +95,7 @@ type Invoice struct {
 	XenditInvoiceURL *string         `json:"xendit_invoice_url,omitempty"`
 	XenditExpiryDate *time.Time      `json:"xendit_expiry_date,omitempty"`
 	Amount           decimal.Decimal `json:"amount"`
+	IsProrated       bool            `json:"is_prorated"`
 	// Snapshot data (immutable - values at transaction time)
 	PlanSnapshotName     string          `json:"plan_snapshot_name"`
 	PricePerSeatSnapshot decimal.Decimal `json:"price_per_seat_snapshot"`
