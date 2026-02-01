@@ -392,7 +392,7 @@ func (r *notificationRepository) UpsertPreference(ctx context.Context, pref *not
 
 	query := `
 		INSERT INTO notification_preferences (id, user_id, notification_type, email_enabled, push_enabled, created_at, updated_at)
-		VALUES (id, $2, $3, $4, $5, $6, $7)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (user_id, notification_type)
 		DO UPDATE SET email_enabled = $4, push_enabled = $5, updated_at = $7
 	`
