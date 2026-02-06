@@ -64,7 +64,7 @@ func (r *CreateEmployeeRequest) Validate() error {
 		})
 	}
 
-	if validator.IsEmpty(r.GradeID) {
+	if validator.IsEmpty(r.BranchID) {
 		errs = append(errs, validator.ValidationError{
 			Field:   "branch_id",
 			Message: "branch_id is required",

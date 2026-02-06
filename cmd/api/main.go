@@ -216,6 +216,16 @@ func main() {
 	cronScheduler := cron.NewScheduler()
 	subscriptionJobs := cron.NewSubscriptionJobs(subscriptionSvc)
 	subscriptionJobs.RegisterJobs(cronScheduler)
+	attendanceJobs := cron.NewAttendanceJobs(
+		attendanceRepo,
+		employeeRepo,
+		workScheduleRepo,
+		workScheduleTimeRepo,
+		branchRepo,
+		notificationSvc,
+		db,
+	)
+	attendanceJobs.RegisterJobs(cronScheduler)
 	go cronScheduler.Start()
 	defer cronScheduler.Stop()
 

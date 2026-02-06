@@ -16,6 +16,7 @@ type AttendanceHandler interface {
 	ClockOut(w http.ResponseWriter, r *http.Request)
 	List(w http.ResponseWriter, r *http.Request)
 	GetMyAttendance(w http.ResponseWriter, r *http.Request)
+	GetStatus(w http.ResponseWriter, r *http.Request)
 	Update(w http.ResponseWriter, r *http.Request)
 	Get(w http.ResponseWriter, r *http.Request)
 	Approve(w http.ResponseWriter, r *http.Request)
@@ -293,6 +294,19 @@ func (h *attendanceHandlerImpl) GetMyAttendance(w http.ResponseWriter, r *http.R
 	}
 
 	response.Success(w, results)
+}
+
+// GetStatus implements AttendanceHandler.
+func (h *attendanceHandlerImpl) GetStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	status, err := h.attendanceService.GetAttendanceStatus(ctx)
+	if err != nil {
+		response.HandleError(w, err)
+		return
+	}
+
+	response.Success(w, status)
 }
 
 // Update implements AttendanceHandler.

@@ -8,15 +8,17 @@ import (
 type NotificationType string
 
 const (
-	TypeAttendanceClockIn  NotificationType = "attendance_clock_in"
-	TypeAttendanceClockOut NotificationType = "attendance_clock_out"
-	TypeLeaveRequest       NotificationType = "leave_request"
-	TypeLeaveApproved      NotificationType = "leave_approved"
-	TypeLeaveRejected      NotificationType = "leave_rejected"
-	TypePayrollGenerated   NotificationType = "payroll_generated"
-	TypeScheduleUpdated    NotificationType = "schedule_updated"
-	TypeInvitationSent     NotificationType = "invitation_sent"
-	TypeEmployeeJoined     NotificationType = "employee_joined"
+	TypeAttendanceClockIn      NotificationType = "attendance_clock_in"
+	TypeAttendanceClockOut     NotificationType = "attendance_clock_out"
+	TypeAttendanceAutoClosed   NotificationType = "attendance_auto_closed"
+	TypeAttendanceMarkedAbsent NotificationType = "attendance_marked_absent"
+	TypeLeaveRequest           NotificationType = "leave_request"
+	TypeLeaveApproved          NotificationType = "leave_approved"
+	TypeLeaveRejected          NotificationType = "leave_rejected"
+	TypePayrollGenerated       NotificationType = "payroll_generated"
+	TypeScheduleUpdated        NotificationType = "schedule_updated"
+	TypeInvitationSent         NotificationType = "invitation_sent"
+	TypeEmployeeJoined         NotificationType = "employee_joined"
 )
 
 // AllNotificationTypes returns all available notification types
@@ -24,6 +26,8 @@ func AllNotificationTypes() []NotificationType {
 	return []NotificationType{
 		TypeAttendanceClockIn,
 		TypeAttendanceClockOut,
+		TypeAttendanceAutoClosed,
+		TypeAttendanceMarkedAbsent,
 		TypeLeaveRequest,
 		TypeLeaveApproved,
 		TypeLeaveRejected,

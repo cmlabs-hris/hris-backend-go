@@ -631,6 +631,14 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get attendance: %w", err)
 	}
 
+	// Validate that attendance hasn't already been processed
+	if att.Status == "on_time" || att.Status == "late" || att.Status == "approved" {
+		return attendance.AttendanceResponse{}, attendance.ErrAttendanceAlreadyProcessed
+	}
+	if att.Status == "rejected" {
+		return attendance.AttendanceResponse{}, fmt.Errorf("cannot approve rejected attendance")
+	}
+
 	// Determine status based on clock in time and schedule
 	status := "on_time" // Default to on_time
 	lateMinutes := 0
@@ -716,6 +724,14 @@ func (a *AttendanceServiceImpl) RejectAttendance(ctx context.Context, req attend
 			return attendance.AttendanceResponse{}, attendance.ErrAttendanceNotFound
 		}
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get attendance: %w", err)
+	}
+
+	// Validate that attendance hasn't already been processed
+	if att.Status == "rejected" {
+		return attendance.AttendanceResponse{}, attendance.ErrAttendanceAlreadyProcessed
+	}
+	if att.Status == "on_time" || att.Status == "late" || att.Status == "approved" {
+		return attendance.AttendanceResponse{}, fmt.Errorf("cannot reject approved attendance")
 	}
 
 	// Update status and approver info
@@ -845,6 +861,108 @@ func (a *AttendanceServiceImpl) notifyManagersOnClockOut(ctx context.Context, co
 			},
 		})
 	}
+}
+
+// GetAttendanceStatus implements attendance.AttendanceService.
+func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attendance.AttendanceStatusResponse, error) {
+	_, claims, err := jwtauth.FromContext(ctx)
+	if err != nil {
+		return attendance.AttendanceStatusResponse{}, fmt.Errorf("failed to extract claims: %w", err)
+	}
+
+	companyID, ok := claims["company_id"].(string)
+	if !ok || companyID == "" {
+		return attendance.AttendanceStatusResponse{}, fmt.Errorf("company_id claim is missing or invalid")
+	}
+
+	employeeID, ok := claims["employee_id"].(string)
+	if !ok || employeeID == "" {
+		return attendance.AttendanceStatusResponse{}, fmt.Errorf("employee_id claim is missing or invalid")
+	}
+
+	// Get timezone
+	timezoneStr, err := a.BranchRepository.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
+	if err != nil {
+		return attendance.AttendanceStatusResponse{}, fmt.Errorf("failed to get timezone: %w", err)
+	}
+
+	loc, _ := time.LoadLocation(timezoneStr)
+	nowLocal := time.Now().UTC().In(loc)
+	dateLocal := nowLocal.Format("2006-01-02")
+
+	// Check if employee has schedule today
+	activeSchedule, err := a.WorkScheduleRepository.GetActiveSchedule(ctx, employeeID, nowLocal, companyID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return attendance.AttendanceStatusResponse{}, fmt.Errorf("failed to get schedule: %w", err)
+	}
+
+	hasSchedule := activeSchedule != nil
+	var scheduleInfo *attendance.ActiveScheduleInfo
+	if hasSchedule {
+		scheduleInfo = &attendance.ActiveScheduleInfo{
+			ScheduleName:       activeSchedule.ScheduleName,
+			ClockInTime:        activeSchedule.ClockIn.Format("15:04"),
+			ClockOutTime:       activeSchedule.ClockOut.Format("15:04"),
+			IsNextDayCheckout:  activeSchedule.IsNextDayCheckout,
+			LocationType:       activeSchedule.LocationType,
+			GracePeriodMinutes: activeSchedule.GracePeriodMinutes,
+		}
+	}
+
+	// Check if checked in today
+	hasCheckedIn, _ := a.AttendanceRepository.HasCheckedInToday(ctx, employeeID, dateLocal, companyID)
+
+	// Get today's attendance if exists
+	var todayAttendance *attendance.AttendanceResponse
+	if hasCheckedIn {
+		dateTime, _ := time.Parse("2006-01-02", dateLocal)
+		att, err := a.AttendanceRepository.GetByEmployeeAndDate(ctx, employeeID, dateTime, companyID)
+		if err == nil && att != nil {
+			resp := mapAttendanceToResponse(*att)
+			todayAttendance = &resp
+		}
+	}
+
+	// Check for open session
+	openSession, err := a.AttendanceRepository.GetOpenSession(ctx, employeeID)
+	hasOpenSession := err == nil && openSession.ID != ""
+
+	var openSessionDate, openSessionID string
+	if hasOpenSession {
+		openSessionDate = openSession.Date.Format("2006-01-02")
+		openSessionID = openSession.ID
+	}
+
+	// Determine capabilities
+	canClockIn := hasSchedule && !hasCheckedIn
+	canClockOut := hasCheckedIn && todayAttendance != nil && todayAttendance.ClockOutTime == nil
+
+	// Build message
+	message := ""
+	if !hasSchedule {
+		message = "You don't have a work schedule for today"
+	} else if hasOpenSession && openSessionDate != dateLocal {
+		message = fmt.Sprintf("Warning: You have an unclosed attendance session from %s. Please contact your manager.", openSessionDate)
+	} else if canClockIn {
+		message = "You can clock in now"
+	} else if canClockOut {
+		message = "You can clock out now"
+	} else if hasCheckedIn {
+		message = "You have completed your attendance for today"
+	}
+
+	return attendance.AttendanceStatusResponse{
+		HasScheduleToday: hasSchedule,
+		ScheduleInfo:     scheduleInfo,
+		HasCheckedIn:     hasCheckedIn,
+		TodayAttendance:  todayAttendance,
+		HasOpenSession:   hasOpenSession,
+		OpenSessionDate:  openSessionDate,
+		OpenSessionID:    openSessionID,
+		CanClockIn:       canClockIn,
+		CanClockOut:      canClockOut,
+		Message:          message,
+	}, nil
 }
 
 func NewAttendanceService(

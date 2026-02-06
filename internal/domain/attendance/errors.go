@@ -13,6 +13,7 @@ var (
 	ErrAlreadyCheckedOut    = errors.New("you have already checked out")
 
 	// General errors
-	ErrAttendanceNotFound = errors.New("attendance record not found")
-	ErrUnauthorized       = errors.New("unauthorized to access this attendance record")
+	ErrAttendanceNotFound         = errors.New("attendance record not found")
+	ErrUnauthorized               = errors.New("unauthorized to access this attendance record")
+	ErrAttendanceAlreadyProcessed = errors.New("attendance has already been approved or rejected")
 )

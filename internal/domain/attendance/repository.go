@@ -30,6 +30,12 @@ type AttendanceRepository interface {
 	HasCheckedInToday(ctx context.Context, employeeID string, dateLocal string, companyID string) (bool, error)
 	GetOpenSession(ctx context.Context, employeeID string) (Attendance, error)
 
+	// GetStaleOpenSessions returns unclosed attendances past grace period
+	GetStaleOpenSessions(ctx context.Context, gracePeriodHours int) ([]Attendance, error)
+
+	// BulkCreateAbsences creates multiple absence records efficiently
+	BulkCreateAbsences(ctx context.Context, attendances []Attendance) error
+
 	// Delete soft deletes an attendance record
 	Delete(ctx context.Context, id string, companyID string) error
 }

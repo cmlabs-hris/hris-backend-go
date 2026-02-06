@@ -588,6 +588,125 @@ func (a *attendanceRepository) Delete(ctx context.Context, id string, companyID 
 	return nil
 }
 
+// GetStaleOpenSessions implements attendance.AttendanceRepository.
+func (a *attendanceRepository) GetStaleOpenSessions(ctx context.Context, gracePeriodHours int) ([]attendance.Attendance, error) {
+	q := GetQuerier(ctx, a.db)
+
+	// This query finds attendances where clock_out is NULL and grace period has passed
+	// Handles next-day checkout correctly
+	query := `
+		SELECT 
+			a.id, a.employee_id, a.company_id, a.date, a.work_schedule_time_id, 
+			a.actual_location_type, a.clock_in, a.clock_out, a.work_hours_in_minutes,
+			a.clock_in_latitude, a.clock_in_longitude, a.clock_in_proof_url,
+			a.clock_out_latitude, a.clock_out_longitude, a.clock_out_proof_url,
+			a.status, a.approved_by, a.approved_at, a.rejection_reason,
+			a.leave_type_id, a.late_minutes, a.early_leave_minutes, a.overtime_minutes,
+			a.created_at, a.updated_at,
+			wst.clock_out_time, wst.is_next_day_checkout,
+			b.timezone
+		FROM attendances a
+		JOIN employees e ON a.employee_id = e.id
+		JOIN branches b ON e.branch_id = b.id
+		JOIN work_schedule_times wst ON a.work_schedule_time_id = wst.id
+		WHERE a.clock_out IS NULL
+		  AND a.status IN ('waiting_approval', 'on_time', 'late')
+		  AND (
+			  -- Calculate expected clock out considering next-day checkout
+			  CASE 
+				  WHEN wst.is_next_day_checkout = true THEN
+					  (a.date + INTERVAL '1 day' + wst.clock_out_time::time)
+				  ELSE
+					  (a.date + wst.clock_out_time::time)
+			  END + INTERVAL '` + fmt.Sprintf("%d", gracePeriodHours) + ` hours'
+		  ) < NOW()
+		ORDER BY a.date ASC, a.clock_in ASC
+	`
+
+	rows, err := q.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query stale sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var attendances []attendance.Attendance
+	for rows.Next() {
+		var att attendance.Attendance
+		var clockOutTime time.Time
+		var isNextDay bool
+		var timezone string
+
+		err := rows.Scan(
+			&att.ID, &att.EmployeeID, &att.CompanyID, &att.Date, &att.WorkScheduleTimeID,
+			&att.ActualLocationType, &att.ClockIn, &att.ClockOut, &att.WorkHoursInMinutes,
+			&att.ClockInLatitude, &att.ClockInLongitude, &att.ClockInProofURL,
+			&att.ClockOutLatitude, &att.ClockOutLongitude, &att.ClockOutProofURL,
+			&att.Status, &att.ApprovedBy, &att.ApprovedAt, &att.RejectionReason,
+			&att.LeaveTypeID, &att.LateMinutes, &att.EarlyLeaveMinutes, &att.OvertimeMinutes,
+			&att.CreatedAt, &att.UpdatedAt,
+			&clockOutTime, &isNextDay, &timezone,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Store schedule data for cron processing (using rejection_reason temporarily as metadata)
+		scheduleData := fmt.Sprintf("schedule_clock_out=%s|next_day=%t|timezone=%s",
+			clockOutTime.Format("15:04:05"), isNextDay, timezone)
+		att.RejectionReason = &scheduleData
+
+		attendances = append(attendances, att)
+	}
+
+	return attendances, rows.Err()
+}
+
+// BulkCreateAbsences implements attendance.AttendanceRepository.
+func (a *attendanceRepository) BulkCreateAbsences(ctx context.Context, attendances []attendance.Attendance) error {
+	if len(attendances) == 0 {
+		return nil
+	}
+
+	q := GetQuerier(ctx, a.db)
+
+	// Build batch insert query with multiple VALUES
+	valueStrings := make([]string, 0, len(attendances))
+	valueArgs := make([]interface{}, 0, len(attendances)*8)
+
+	for i, att := range attendances {
+		base := i * 8
+		valueStrings = append(valueStrings, fmt.Sprintf(
+			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, NOW(), NOW())",
+			base+1, base+2, base+3, base+4, base+5, base+6, base+7,
+		))
+		valueArgs = append(valueArgs,
+			att.EmployeeID,
+			att.CompanyID,
+			att.Date,
+			att.WorkScheduleTimeID,
+			att.Status,
+			att.WorkHoursInMinutes,
+			att.ClockIn,
+			att.ClockOut,
+		)
+	}
+
+	query := fmt.Sprintf(`
+		INSERT INTO attendances (
+			employee_id, company_id, date, work_schedule_time_id,
+			status, work_hours_in_minutes, clock_in, clock_out, created_at, updated_at
+		) VALUES %s
+		ON CONFLICT (employee_id, date, company_id) DO NOTHING
+	`, strings.Join(valueStrings, ", "))
+
+	_, err := q.Exec(ctx, query, valueArgs...)
+	if err != nil {
+		return fmt.Errorf("failed to bulk create absences: %w", err)
+	}
+
+	return nil
+}
+
 func NewAttendanceRepository(db *database.DB) attendance.AttendanceRepository {
 	return &attendanceRepository{db: db}
 }

@@ -504,3 +504,29 @@ func (r *RejectAttendanceRequest) Validate() error {
 
 	return nil
 }
+
+// ========================================
+// ATTENDANCE STATUS DTOs
+// ========================================
+
+type AttendanceStatusResponse struct {
+	HasScheduleToday bool                `json:"has_schedule_today"`
+	ScheduleInfo     *ActiveScheduleInfo `json:"schedule_info,omitempty"`
+	HasCheckedIn     bool                `json:"has_checked_in"`
+	TodayAttendance  *AttendanceResponse `json:"today_attendance,omitempty"`
+	HasOpenSession   bool                `json:"has_open_session"`
+	OpenSessionDate  string              `json:"open_session_date,omitempty"`
+	OpenSessionID    string              `json:"open_session_id,omitempty"`
+	CanClockIn       bool                `json:"can_clock_in"`
+	CanClockOut      bool                `json:"can_clock_out"`
+	Message          string              `json:"message"`
+}
+
+type ActiveScheduleInfo struct {
+	ScheduleName       string `json:"schedule_name"`
+	ClockInTime        string `json:"clock_in_time"`
+	ClockOutTime       string `json:"clock_out_time"`
+	IsNextDayCheckout  bool   `json:"is_next_day_checkout"`
+	LocationType       string `json:"location_type"`
+	GracePeriodMinutes int    `json:"grace_period_minutes"`
+}

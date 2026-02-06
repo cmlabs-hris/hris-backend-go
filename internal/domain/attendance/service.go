@@ -15,6 +15,9 @@ type AttendanceService interface {
 	// GetMyAttendance retrieves attendance records for authenticated employee
 	GetMyAttendance(ctx context.Context, filter MyAttendanceFilter) (ListAttendanceResponse, error)
 
+	// GetAttendanceStatus retrieves current attendance status for authenticated employee
+	GetAttendanceStatus(ctx context.Context) (AttendanceStatusResponse, error)
+
 	// ListAttendance retrieves attendance records with filters (admin/manager)
 	ListAttendance(ctx context.Context, filter AttendanceFilter) (ListAttendanceResponse, error)
 

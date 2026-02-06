@@ -279,6 +279,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 			r.Route("/attendance", func(r chi.Router) {
 				// Read operations - available to all subscriptions
 				r.Get("/my", attendanceHandler.GetMyAttendance) // Get my attendance records
+				r.Get("/status", attendanceHandler.GetStatus)   // Get current attendance status
 
 				// Write operations - require attendance feature
 				r.Group(func(r chi.Router) {
