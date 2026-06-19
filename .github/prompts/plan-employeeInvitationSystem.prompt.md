@@ -153,7 +153,7 @@ func (i *Invitation) CanBeAccepted() bool {
 package invitation
 
 import (
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/validator"
 )
 
 // CreateRequest - used internally by EmployeeService
@@ -370,7 +370,7 @@ import (
     "html/template"
     "net/smtp"
     
-    "github.com/cmlabs-hris/hris-backend-go/internal/config"
+    "github.com/pitik0x/Ai-Security-analyst/internal/config"
 )
 
 //go:embed templates/*.html
@@ -527,8 +527,8 @@ import (
     "context"
     "time"
     
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/invitation"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/database"
     "github.com/jackc/pgx/v5"
 )
 
@@ -751,13 +751,13 @@ import (
     "fmt"
     "time"
     
-    "github.com/cmlabs-hris/hris-backend-go/internal/config"
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/employee"
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
-    "github.com/cmlabs-hris/hris-backend-go/internal/repository/postgresql"
+    "github.com/pitik0x/Ai-Security-analyst/internal/config"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/employee"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/invitation"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/user"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/database"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/email"
+    "github.com/pitik0x/Ai-Security-analyst/internal/repository/postgresql"
     "github.com/google/uuid"
     "github.com/jackc/pgx/v5"
 )
@@ -1016,8 +1016,8 @@ package http
 import (
     "net/http"
     
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/invitation"
-    "github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/invitation"
+    "github.com/pitik0x/Ai-Security-analyst/internal/handler/http/response"
     "github.com/go-chi/chi/v5"
     "github.com/go-chi/jwtauth/v5"
 )
@@ -1434,8 +1434,8 @@ func NewRouter(
 ```go
 import (
     // ... existing imports
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/email"
-    invitationService "github.com/cmlabs-hris/hris-backend-go/internal/service/invitation"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/email"
+    invitationService "github.com/pitik0x/Ai-Security-analyst/internal/service/invitation"
 )
 
 func main() {

@@ -335,7 +335,7 @@ type AttendanceSummary struct {
 package payroll
 
 import (
-    "github.com/cmlabs-hris/hris-backend-go/internal/pkg/validator"
+    "github.com/pitik0x/Ai-Security-analyst/internal/pkg/validator"
     "github.com/shopspring/decimal"
 )
 
@@ -806,8 +806,8 @@ import (
     "net/http"
     "strconv"
     
-    "github.com/cmlabs-hris/hris-backend-go/internal/domain/payroll"
-    "github.com/cmlabs-hris/hris-backend-go/internal/handler/http/response"
+    "github.com/pitik0x/Ai-Security-analyst/internal/domain/payroll"
+    "github.com/pitik0x/Ai-Security-analyst/internal/handler/http/response"
     "github.com/go-chi/chi/v5"
 )
 
@@ -904,7 +904,7 @@ func NewRouter(..., payrollHandler PayrollHandler, ...) *chi.Mux {
 
 ```go
 // Add import
-import payrollService "github.com/cmlabs-hris/hris-backend-go/internal/service/payroll"
+import payrollService "github.com/pitik0x/Ai-Security-analyst/internal/service/payroll"
 
 // Add repository
 payrollRepo := postgresql.NewPayrollRepository(db)

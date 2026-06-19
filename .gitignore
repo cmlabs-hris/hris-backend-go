@@ -35,3 +35,7 @@ Technical_Docs_PBL_2025.txt
 
 # Storage - Ignore all contents...
 /storage/*
+
+.vscode/
+.github/
+.zed/
