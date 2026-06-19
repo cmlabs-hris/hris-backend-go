@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httplog/v3"
 	"github.com/go-chi/jwtauth/v5"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, reportHandler ReportHandler, subscriptionHandler SubscriptionHandler, subscriptionMiddleware *middleware.SubscriptionMiddleware, storageBasePath string) *chi.Mux {
@@ -26,7 +27,7 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	)
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://cmlabs-hris-team5.vercel.app"},
+		AllowedOrigins:   []string{"https://cmlabs-hris-team5.vercel.app", "http://localhost:3000"},
 		AllowCredentials: true,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
@@ -50,6 +51,16 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 
 	fileServer := http.FileServer(http.Dir(storageBasePath))
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
+
+	// Serve OpenAPI JSON file
+	r.Get("/openapi.json", func(w http.ResponseWriter, req *http.Request) {
+		http.ServeFile(w, req, "api/openapi.json")
+	})
+
+	// Serve Swagger UI
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/openapi.json"),
+	))
 
 	r.Route("/api/v1", func(r chi.Router) {
 
