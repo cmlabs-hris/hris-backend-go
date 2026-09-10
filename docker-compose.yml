@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: hris-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: cmlabs_hris
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cmlabs_hris"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hris-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hris-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Docker-specific overrides (these take precedence over .env)
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      BASE_PATH: /app/storage
+    ports:
+      - "8080:8080"
+    volumes:
+      - storage_data:/app/storage
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
