@@ -282,6 +282,12 @@ func HandleError(w http.ResponseWriter, err error) {
 		NotFound(w, "Attendance record not found")
 	case errors.Is(err, attendance.ErrUnauthorized):
 		Forbidden(w, "Unauthorized to access this attendance record")
+	case errors.Is(err, attendance.ErrAttendanceAlreadyProcessed):
+		Conflict(w, attendance.ErrAttendanceAlreadyProcessed.Error())
+	case errors.Is(err, attendance.ErrCannotRejectApproved):
+		Conflict(w, attendance.ErrCannotRejectApproved.Error())
+	case errors.Is(err, attendance.ErrCannotApproveRejected):
+		Conflict(w, attendance.ErrCannotApproveRejected.Error())
 
 	// Invitation domain errors
 	case errors.Is(err, invitation.ErrInvitationNotFound):

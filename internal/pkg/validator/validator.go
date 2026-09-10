@@ -63,6 +63,11 @@ func IsValidDate(dateStr string) (time.Time, bool) {
 	return date, err == nil
 }
 
+func IsValidDateTime(dateStr string) (time.Time, bool) {
+	date, err := time.Parse("2006-01-02 15:04:05", dateStr)
+	return date, err == nil
+}
+
 // NIK validation (Indonesian ID)
 func IsValidNIK(nik string) bool {
 	return len(nik) == 16 && IsNumeric(nik)
@@ -133,26 +138,11 @@ func Itoa(i int) string {
 	return strconv.Itoa(i)
 }
 
-// IsValidDateTime checks if a string is a valid date in "YYYY-MM-DD" format.
-func IsValidDateTime(dateTimeStr string) (time.Time, bool) {
-	t, err := time.Parse("2006-01-02", dateTimeStr)
-	if err == nil {
-		return t, true
-	}
-	return time.Time{}, false
-}
-
-// IsValidTime checks if a string is a valid time in HH:MM or HH:MM:SS format.
-// Accepts formats like: "09:00", "09:00:00", "23:59:59"
+// IsValidTime checks if a string is a valid time in HH:MM:SS format.
+// Accepts format like "09:00:00" only
 func IsValidTime(timeStr string) (time.Time, bool) {
 	// Try HH:MM:SS format first
 	t, err := time.Parse("15:04:05", timeStr)
-	if err == nil {
-		return t, true
-	}
-
-	// Try HH:MM format (will default seconds to 00)
-	t, err = time.Parse("15:04", timeStr)
 	if err == nil {
 		return t, true
 	}

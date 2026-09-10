@@ -13,8 +13,8 @@ import (
 
 type ClockInRequest struct {
 	EmployeeID    string                `json:"employee_id"`
-	Latitude      float64               `json:"latitude"`
-	Longitude     float64               `json:"longitude"`
+	Latitude      *float64              `json:"latitude"`
+	Longitude     *float64              `json:"longitude"`
 	ProofPhotoURL *string               `json:"-"`
 	File          multipart.File        `json:"-"`
 	FileHeader    *multipart.FileHeader `json:"-"`
@@ -30,38 +30,60 @@ func (r *ClockInRequest) Validate() error {
 		})
 	}
 
-	if r.Latitude < -90 || r.Latitude > 90 {
+	if r.Latitude == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "latitude",
+			Message: "latitude is required",
+		})
+	} else if *r.Latitude < -90 || *r.Latitude > 90 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "latitude",
 			Message: "latitude must be between -90 and 90",
 		})
 	}
 
-	if r.Longitude < -180 || r.Longitude > 180 {
+	if r.Longitude == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "longitude",
+			Message: "longitude is required",
+		})
+	} else if *r.Longitude < -180 || *r.Longitude > 180 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "longitude",
 			Message: "longitude must be between -180 and 180",
 		})
 	}
 
-	filename := r.FileHeader.Filename
-	ext := strings.ToLower(filename[strings.LastIndex(filename, "."):])
 	if r.FileHeader == nil {
 		errs = append(errs, validator.ValidationError{
 			Field:   "file",
 			Message: "attendance proof photo is required",
 		})
-	} else if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-		// Validate image format
-		errs = append(errs, validator.ValidationError{
-			Field:   "file",
-			Message: "invalid file type: only jpg, jpeg, png allowed",
-		})
-	} else if r.FileHeader.Size > 10<<20 { // 10MB
-		errs = append(errs, validator.ValidationError{
-			Field:   "file",
-			Message: "attendance proof photo size must not exceed 10MB",
-		})
+	} else {
+		filename := r.FileHeader.Filename
+		lastDotIndex := strings.LastIndex(filename, ".")
+		if lastDotIndex == -1 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "file",
+				Message: "invalid file type: missing extension",
+			})
+		} else {
+			ext := strings.ToLower(filename[lastDotIndex:])
+			if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+				// Validate image format
+				errs = append(errs, validator.ValidationError{
+					Field:   "file",
+					Message: "invalid file type: only jpg, jpeg, png allowed",
+				})
+			}
+		}
+
+		if r.FileHeader.Size > 10<<20 { // 10MB
+			errs = append(errs, validator.ValidationError{
+				Field:   "file",
+				Message: "attendance proof photo size must not exceed 10MB",
+			})
+		}
 	}
 
 	if len(errs) > 0 {
@@ -73,8 +95,8 @@ func (r *ClockInRequest) Validate() error {
 
 type ClockOutRequest struct {
 	EmployeeID    string                `json:"employee_id"`
-	Latitude      float64               `json:"latitude"`
-	Longitude     float64               `json:"longitude"`
+	Latitude      *float64              `json:"latitude"`
+	Longitude     *float64              `json:"longitude"`
 	ProofPhotoURL *string               `json:"-"`
 	File          multipart.File        `json:"-"`
 	FileHeader    *multipart.FileHeader `json:"-"`
@@ -90,38 +112,60 @@ func (r *ClockOutRequest) Validate() error {
 		})
 	}
 
-	if r.Latitude < -90 || r.Latitude > 90 {
+	if r.Latitude == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "latitude",
+			Message: "latitude is required",
+		})
+	} else if *r.Latitude < -90 || *r.Latitude > 90 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "latitude",
 			Message: "latitude must be between -90 and 90",
 		})
 	}
 
-	if r.Longitude < -180 || r.Longitude > 180 {
+	if r.Longitude == nil {
+		errs = append(errs, validator.ValidationError{
+			Field:   "longitude",
+			Message: "longitude is required",
+		})
+	} else if *r.Longitude < -180 || *r.Longitude > 180 {
 		errs = append(errs, validator.ValidationError{
 			Field:   "longitude",
 			Message: "longitude must be between -180 and 180",
 		})
 	}
 
-	filename := r.FileHeader.Filename
-	ext := strings.ToLower(filename[strings.LastIndex(filename, "."):])
 	if r.FileHeader == nil {
 		errs = append(errs, validator.ValidationError{
 			Field:   "file",
 			Message: "attendance proof photo is required",
 		})
-	} else if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
-		// Validate image format
-		errs = append(errs, validator.ValidationError{
-			Field:   "file",
-			Message: "invalid file type: only jpg, jpeg, png allowed",
-		})
-	} else if r.FileHeader.Size > 10<<20 { // 10MB
-		errs = append(errs, validator.ValidationError{
-			Field:   "file",
-			Message: "attendance proof photo size must not exceed 10MB",
-		})
+	} else {
+		filename := r.FileHeader.Filename
+		lastDotIndex := strings.LastIndex(filename, ".")
+		if lastDotIndex == -1 {
+			errs = append(errs, validator.ValidationError{
+				Field:   "file",
+				Message: "invalid file type: missing extension",
+			})
+		} else {
+			ext := strings.ToLower(filename[lastDotIndex:])
+			if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+				// Validate image format
+				errs = append(errs, validator.ValidationError{
+					Field:   "file",
+					Message: "invalid file type: only jpg, jpeg, png allowed",
+				})
+			}
+		}
+
+		if r.FileHeader.Size > 10<<20 { // 10MB
+			errs = append(errs, validator.ValidationError{
+				Field:   "file",
+				Message: "attendance proof photo size must not exceed 10MB",
+			})
+		}
 	}
 
 	if len(errs) > 0 {
@@ -147,6 +191,7 @@ type AttendanceResponse struct {
 	ClockOutProofURL  *string  `json:"clock_out_proof_url,omitempty"`
 	WorkingHours      *float64 `json:"working_hours,omitempty"`
 	Status            string   `json:"status"`
+	RejectionReason   *string  `json:"rejection_reason"`
 	IsLate            *bool    `json:"is_late,omitempty"`
 	IsEarlyLeave      *bool    `json:"is_early_leave,omitempty"`
 	LateMinutes       *int     `json:"late_minutes,omitempty"`
@@ -216,30 +261,56 @@ func (f *AttendanceFilter) Validate() error {
 	}
 
 	// Date validation
-	if f.Date != nil && *f.Date != "" {
-		if _, valid := validator.IsValidDate(*f.Date); !valid {
-			errs = append(errs, validator.ValidationError{
-				Field:   "date",
-				Message: "date must be in YYYY-MM-DD format",
-			})
-		}
-	}
+	hasExactDate := f.Date != nil && *f.Date != ""
+	hasStartDate := f.StartDate != nil && *f.StartDate != ""
+	hasEndDate := f.EndDate != nil && *f.EndDate != ""
 
-	if f.StartDate != nil && *f.StartDate != "" {
-		if _, valid := validator.IsValidDate(*f.StartDate); !valid {
-			errs = append(errs, validator.ValidationError{
-				Field:   "start_date",
-				Message: "start_date must be in YYYY-MM-DD format",
-			})
-		}
-	}
+	if hasExactDate && (hasStartDate || hasEndDate) {
+		errs = append(errs, validator.ValidationError{
+			Field:   "date",
+			Message: "cannot filter by both exact 'date' and 'start_date/end_date' range simultaneously. Choose one.",
+		})
+	} else {
+		if hasExactDate {
+			if _, valid := validator.IsValidDate(*f.Date); !valid {
+				errs = append(errs, validator.ValidationError{
+					Field:   "date",
+					Message: "date must be in YYYY-MM-DD format",
+				})
+			}
+		} else {
+			validStart := false
+			if hasStartDate {
+				if _, valid := validator.IsValidDate(*f.StartDate); valid {
+					validStart = true
+				} else {
+					errs = append(errs, validator.ValidationError{
+						Field:   "start_date",
+						Message: "start_date must be in YYYY-MM-DD format",
+					})
+				}
+			}
+			validEnd := false
+			if hasEndDate {
+				if _, valid := validator.IsValidDate(*f.EndDate); valid {
+					validEnd = true
+				} else {
+					errs = append(errs, validator.ValidationError{
+						Field:   "end_date",
+						Message: "end_date must be in YYYY-MM-DD format",
+					})
+				}
+			}
 
-	if f.EndDate != nil && *f.EndDate != "" {
-		if _, valid := validator.IsValidDate(*f.EndDate); !valid {
-			errs = append(errs, validator.ValidationError{
-				Field:   "end_date",
-				Message: "end_date must be in YYYY-MM-DD format",
-			})
+			if validStart && validEnd {
+				if *f.StartDate > *f.EndDate {
+					errs = append(errs, validator.ValidationError{
+						Field:   "start_date",
+						Message: "start_date cannot be after end_date",
+					})
+				}
+			}
+
 		}
 	}
 
@@ -427,6 +498,30 @@ func (r *UpdateAttendanceRequest) Validate() error {
 			errs = append(errs, validator.ValidationError{
 				Field:   "date",
 				Message: "date must be in YYYY-MM-DD format",
+			})
+		}
+	}
+
+	if r.ClockInTime != nil && *r.ClockInTime != "" {
+		_, isDateTime := validator.IsValidDateTime(*r.ClockInTime)
+		_, isTime := validator.IsValidTime(*r.ClockInTime)
+
+		if !isTime && !isDateTime {
+			errs = append(errs, validator.ValidationError{
+				Field:   "clock_in_time",
+				Message: "clock_in_time must be in YYYY-MM-DD HH:MM:SS or HH:MM:SS format",
+			})
+		}
+	}
+
+	if r.ClockOutTime != nil && *r.ClockOutTime != "" {
+		_, isDateTime := validator.IsValidDateTime(*r.ClockOutTime)
+		_, isTime := validator.IsValidTime(*r.ClockOutTime)
+
+		if !isTime && !isDateTime {
+			errs = append(errs, validator.ValidationError{
+				Field:   "clock_out_time",
+				Message: "clock_out_time must be in YYYY-MM-DD HH:MM:SS or HH:MM:SS format",
 			})
 		}
 	}

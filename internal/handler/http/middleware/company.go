@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/user"
@@ -12,24 +13,14 @@ func RequireCompany(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, claims, err := jwtauth.FromContext(r.Context())
 		if err != nil {
-			response.HandleError(w, user.ErrCompanyIDRequired)
+			response.HandleError(w, fmt.Errorf("token claim can not be extracted"))
+			return
 		}
 
-		companyID, companyFound := claims["company_id"].(*string)
-		if err != nil {
+		companyID, companyFound := claims["company_id"].(string)
+		if companyID == "" || !companyFound {
 			response.HandleError(w, user.ErrCompanyIDRequired)
-		}
-
-		role, roleFound := claims["role"].(user.Role)
-		if err != nil {
-			response.HandleError(w, user.ErrCompanyIDRequired)
-		}
-
-		if role == user.RolePending && roleFound {
-			if companyID == nil || *companyID == "" || companyFound {
-				response.HandleError(w, user.ErrCompanyIDRequired)
-				return
-			}
+			return
 		}
 
 		next.ServeHTTP(w, r)

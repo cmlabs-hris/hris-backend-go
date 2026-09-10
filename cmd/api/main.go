@@ -164,14 +164,16 @@ func main() {
 		notificationSvc,
 	)
 	attendanceService := attendanceService.NewAttendanceService(
-		db,
-		attendanceRepo,
-		employeeRepo,
-		workScheduleRepo,
-		workScheduleTimeRepo,
-		branchRepo,
-		fileService,
-		notificationSvc,
+		attendanceService.Deps{
+			DB:                   db,
+			AttendanceRepo:       attendanceRepo,
+			EmployeeRepo:         employeeRepo,
+			WorkScheduleRepo:     workScheduleRepo,
+			WorkScheduleTimeRepo: workScheduleTimeRepo,
+			BranchRepo:           branchRepo,
+			FileService:          fileService,
+			NotificationService:  notificationSvc,
+		},
 	)
 	invitationService := invitationService.NewInvitationService(
 		db,

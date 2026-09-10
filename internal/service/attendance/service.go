@@ -19,14 +19,25 @@ import (
 )
 
 type AttendanceServiceImpl struct {
-	db *database.DB
-	attendance.AttendanceRepository
-	employee.EmployeeRepository
-	schedule.WorkScheduleRepository
-	schedule.WorkScheduleTimeRepository
-	branch.BranchRepository
-	fileService         file.FileService
-	notificationService notification.Service
+	db                   *database.DB
+	attendanceRepo       attendance.AttendanceRepository
+	employeeRepo         employee.EmployeeRepository
+	workScheduleRepo     schedule.WorkScheduleRepository
+	workScheduleTimeRepo schedule.WorkScheduleTimeRepository
+	branchRepo           branch.BranchRepository
+	fileService          file.FileService
+	notificationService  notification.Service
+}
+
+type Deps struct {
+	DB                   *database.DB
+	AttendanceRepo       attendance.AttendanceRepository
+	EmployeeRepo         employee.EmployeeRepository
+	WorkScheduleRepo     schedule.WorkScheduleRepository
+	WorkScheduleTimeRepo schedule.WorkScheduleTimeRepository
+	BranchRepo           branch.BranchRepository
+	FileService          file.FileService
+	NotificationService  notification.Service
 }
 
 // timePtrToString safely converts a *time.Time to a string.
@@ -40,9 +51,6 @@ func timePtrToString(t *time.Time) *string {
 
 // ClockIn implements attendance.AttendanceService.
 func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.ClockInRequest) (attendance.AttendanceResponse, error) {
-	if err := req.Validate(); err != nil {
-		return attendance.AttendanceResponse{}, err
-	}
 	nowUTC := time.Now().UTC()
 
 	_, claims, err := jwtauth.FromContext(ctx)
@@ -56,11 +64,11 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 	}
 
 	employeeID, ok := claims["employee_id"].(string)
-	if !ok || companyID == "" {
-		return attendance.AttendanceResponse{}, fmt.Errorf("company_id claim is missing or invalid")
+	if !ok || employeeID == "" {
+		return attendance.AttendanceResponse{}, fmt.Errorf("employee_id claim is missing or invalid")
 	}
 
-	timezoneStr, err := a.BranchRepository.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
+	timezoneStr, err := a.branchRepo.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, branch.ErrInvalidTimezone
@@ -76,7 +84,7 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 	nowLocal := nowUTC.In(loc)
 	dateLocal := nowLocal.Format("2006-01-02")
 
-	hasChekedIn, err := a.AttendanceRepository.HasCheckedInToday(ctx, employeeID, dateLocal, companyID)
+	hasChekedIn, err := a.attendanceRepo.HasCheckedInToday(ctx, employeeID, dateLocal, companyID)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, fmt.Errorf("failed to check if employee has checked in today: %w", err)
@@ -87,7 +95,7 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 		return attendance.AttendanceResponse{}, attendance.ErrAlreadyCheckedIn
 	}
 
-	activeSchedule, err := a.WorkScheduleRepository.GetActiveSchedule(ctx, employeeID, nowLocal, companyID)
+	activeSchedule, err := a.workScheduleRepo.GetActiveSchedule(ctx, employeeID, nowLocal, companyID)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, fmt.Errorf("failed to get active schedule: %w", err)
@@ -157,7 +165,7 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 	req.ProofPhotoURL = &ProofPhotoURL
 
 	data := attendance.Attendance{
-		EmployeeID: req.EmployeeID,
+		EmployeeID: employeeID,
 		CompanyID:  companyID,
 
 		// PENTING: Date adalah representasi "Hari Kerja", bukan timestamp
@@ -171,8 +179,8 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 		ClockIn: &nowUTC,
 
 		// Bukti Lokasi
-		ClockInLatitude:  &req.Latitude,
-		ClockInLongitude: &req.Longitude,
+		ClockInLatitude:  req.Latitude,
+		ClockInLongitude: req.Longitude,
 		ClockInProofURL:  req.ProofPhotoURL,
 
 		// Hasil Kalkulasi
@@ -182,7 +190,7 @@ func (a *AttendanceServiceImpl) ClockIn(ctx context.Context, req attendance.Cloc
 		OvertimeMinutes:   nil, // Diisi saat checkout
 	}
 
-	attendanceResult, err := a.AttendanceRepository.Create(ctx, data)
+	attendanceResult, err := a.attendanceRepo.Create(ctx, data)
 	if err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to create attendance record: %w", err)
 	}
@@ -229,10 +237,10 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 
 	employeeID, ok := claims["employee_id"].(string)
 	if !ok || companyID == "" {
-		return attendance.AttendanceResponse{}, fmt.Errorf("company_id claim is missing or invalid")
+		return attendance.AttendanceResponse{}, fmt.Errorf("employee_id claim is missing or invalid")
 	}
 
-	attendanceData, err := a.AttendanceRepository.GetOpenSession(ctx, employeeID)
+	attendanceData, err := a.attendanceRepo.GetOpenSession(ctx, employeeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, attendance.ErrNotCheckedIn
@@ -244,7 +252,7 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 		return attendance.AttendanceResponse{}, fmt.Errorf("attendance has no associated work schedule time")
 	}
 
-	scheduleTime, err := a.WorkScheduleTimeRepository.GetByID(ctx, *attendanceData.WorkScheduleTimeID, companyID)
+	scheduleTime, err := a.workScheduleTimeRepo.GetByID(ctx, *attendanceData.WorkScheduleTimeID, companyID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, schedule.ErrWorkScheduleTimeNotFound
@@ -252,7 +260,7 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get work schedule time: %w", err)
 	}
 
-	timezoneStr, err := a.BranchRepository.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
+	timezoneStr, err := a.branchRepo.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, branch.ErrBranchNotFound
@@ -299,14 +307,14 @@ func (a *AttendanceServiceImpl) ClockOut(ctx context.Context, req attendance.Clo
 	req.ProofPhotoURL = &ProofPhotoURL
 
 	attendanceData.ClockOut = &nowUTC
-	attendanceData.ClockOutLatitude = &req.Latitude
-	attendanceData.ClockOutLongitude = &req.Longitude
+	attendanceData.ClockOutLatitude = req.Latitude
+	attendanceData.ClockOutLongitude = req.Longitude
 	attendanceData.EarlyLeaveMinutes = &earlyLeaveMins
 	attendanceData.OvertimeMinutes = &overtimeMins
 	attendanceData.WorkHoursInMinutes = &workHoursMins
 	attendanceData.ClockOutProofURL = req.ProofPhotoURL
 
-	if err := a.AttendanceRepository.Update(ctx, attendanceData); err != nil {
+	if err := a.attendanceRepo.Update(ctx, attendanceData); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return attendance.AttendanceResponse{}, fmt.Errorf("attendance not found: %w", attendance.ErrAttendanceNotFound)
 		}
@@ -354,7 +362,7 @@ func (a *AttendanceServiceImpl) GetMyAttendance(ctx context.Context, filter atte
 		return attendance.ListAttendanceResponse{}, fmt.Errorf("employee_id claim is missing or invalid")
 	}
 
-	attendances, total, err := a.AttendanceRepository.GetMyAttendance(ctx, employeeID, filter, companyID)
+	attendances, total, err := a.attendanceRepo.GetMyAttendance(ctx, employeeID, filter, companyID)
 	if err != nil {
 		return attendance.ListAttendanceResponse{}, fmt.Errorf("failed to get my attendance: %w", err)
 	}
@@ -393,7 +401,7 @@ func (a *AttendanceServiceImpl) ListAttendance(ctx context.Context, filter atten
 		return attendance.ListAttendanceResponse{}, fmt.Errorf("company_id claim is missing or invalid")
 	}
 
-	attendances, total, err := a.AttendanceRepository.List(ctx, filter, companyID)
+	attendances, total, err := a.attendanceRepo.List(ctx, filter, companyID)
 	if err != nil {
 		return attendance.ListAttendanceResponse{}, fmt.Errorf("failed to list attendances: %w", err)
 	}
@@ -461,6 +469,7 @@ func mapAttendanceToResponse(att attendance.Attendance) attendance.AttendanceRes
 		ClockOutProofURL:  att.ClockOutProofURL,
 		WorkingHours:      workingHours,
 		Status:            att.Status,
+		RejectionReason:   att.RejectionReason,
 		IsLate:            isLate,
 		IsEarlyLeave:      isEarlyLeave,
 		LateMinutes:       att.LateMinutes,
@@ -488,7 +497,7 @@ func (a *AttendanceServiceImpl) UpdateAttendance(ctx context.Context, req attend
 	}
 
 	// Get existing attendance
-	att, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	att, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		if errors.Is(err, attendance.ErrAttendanceNotFound) {
 			return attendance.AttendanceResponse{}, attendance.ErrAttendanceNotFound
@@ -498,39 +507,48 @@ func (a *AttendanceServiceImpl) UpdateAttendance(ctx context.Context, req attend
 
 	// Update fields based on request
 	if req.Date != nil && *req.Date != "" {
-		parsedDate, _ := time.Parse("2006-01-02", *req.Date)
+		parsedDate, err := time.Parse("2006-01-02", *req.Date)
+		if err != nil {
+			return attendance.AttendanceResponse{}, attendance.ErrDateFormat
+		}
 		att.Date = parsedDate
 	}
 
 	if req.ClockInTime != nil && *req.ClockInTime != "" {
-		// Try parsing as full datetime first, then as time only
-		clockIn, err := time.Parse("2006-01-02 15:04:05", *req.ClockInTime)
-		if err != nil {
-			// Try parsing as time only and combine with attendance date
-			clockInTime, err := time.Parse("15:04:05", *req.ClockInTime)
-			if err == nil {
-				clockIn = time.Date(att.Date.Year(), att.Date.Month(), att.Date.Day(),
-					clockInTime.Hour(), clockInTime.Minute(), clockInTime.Second(), 0, time.UTC)
-			}
-		}
-		if !clockIn.IsZero() {
+		validFormat := false
+		if clockIn, err := time.Parse("2006-01-02 15:04:05", *req.ClockInTime); err == nil {
+			validFormat = true
 			att.ClockIn = &clockIn
+		}
+
+		if clockIn, err := time.Parse("15:04:05", *req.ClockInTime); err == nil {
+			clockIn = time.Date(att.Date.Year(), att.Date.Month(), att.Date.Day(),
+				clockIn.Hour(), clockIn.Minute(), clockIn.Second(), 0, time.UTC)
+			att.ClockIn = &clockIn
+			validFormat = true
+		}
+
+		if !validFormat {
+			return attendance.AttendanceResponse{}, attendance.ErrClockInFormat
 		}
 	}
 
 	if req.ClockOutTime != nil && *req.ClockOutTime != "" {
-		// Try parsing as full datetime first, then as time only
-		clockOut, err := time.Parse("2006-01-02 15:04:05", *req.ClockOutTime)
-		if err != nil {
-			// Try parsing as time only and combine with attendance date
-			clockOutTime, err := time.Parse("15:04:05", *req.ClockOutTime)
-			if err == nil {
-				clockOut = time.Date(att.Date.Year(), att.Date.Month(), att.Date.Day(),
-					clockOutTime.Hour(), clockOutTime.Minute(), clockOutTime.Second(), 0, time.UTC)
-			}
-		}
-		if !clockOut.IsZero() {
+		validFormat := false
+		if clockOut, err := time.Parse("2006-01-02 15:04:05", *req.ClockOutTime); err == nil {
+			validFormat = true
 			att.ClockOut = &clockOut
+		}
+
+		if clockOut, err := time.Parse("15:04:05", *req.ClockOutTime); err == nil {
+			clockOut = time.Date(att.Date.Year(), att.Date.Month(), att.Date.Day(),
+				clockOut.Hour(), clockOut.Minute(), clockOut.Second(), 0, time.UTC)
+			att.ClockOut = &clockOut
+			validFormat = true
+		}
+
+		if !validFormat {
+			return attendance.AttendanceResponse{}, attendance.ErrClockOutFormat
 		}
 	}
 
@@ -569,12 +587,12 @@ func (a *AttendanceServiceImpl) UpdateAttendance(ctx context.Context, req attend
 	}
 
 	// Update in repository
-	if err := a.AttendanceRepository.Update(ctx, att); err != nil {
+	if err := a.attendanceRepo.Update(ctx, att); err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to update attendance: %w", err)
 	}
 
 	// Fetch updated record
-	updatedAtt, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	updatedAtt, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get updated attendance: %w", err)
 	}
@@ -594,7 +612,7 @@ func (a *AttendanceServiceImpl) GetAttendance(ctx context.Context, id string) (a
 		return attendance.AttendanceResponse{}, fmt.Errorf("company_id claim is missing or invalid")
 	}
 
-	att, err := a.AttendanceRepository.GetByID(ctx, id, companyID)
+	att, err := a.attendanceRepo.GetByID(ctx, id, companyID)
 	if err != nil {
 		if errors.Is(err, attendance.ErrAttendanceNotFound) {
 			return attendance.AttendanceResponse{}, attendance.ErrAttendanceNotFound
@@ -623,7 +641,7 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 	}
 
 	// Get existing attendance
-	att, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	att, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		if errors.Is(err, attendance.ErrAttendanceNotFound) {
 			return attendance.AttendanceResponse{}, attendance.ErrAttendanceNotFound
@@ -636,7 +654,7 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 		return attendance.AttendanceResponse{}, attendance.ErrAttendanceAlreadyProcessed
 	}
 	if att.Status == "rejected" {
-		return attendance.AttendanceResponse{}, fmt.Errorf("cannot approve rejected attendance")
+		return attendance.AttendanceResponse{}, attendance.ErrCannotApproveRejected
 	}
 
 	// Determine status based on clock in time and schedule
@@ -645,10 +663,10 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 
 	if att.WorkScheduleTimeID != nil && att.ClockIn != nil {
 		// Get the schedule time to determine if late
-		scheduleTime, err := a.WorkScheduleTimeRepository.GetByID(ctx, *att.WorkScheduleTimeID, companyID)
+		scheduleTime, err := a.workScheduleTimeRepo.GetByID(ctx, *att.WorkScheduleTimeID, companyID)
 		if err == nil {
 			// Get the work schedule for grace period
-			workSchedule, err := a.WorkScheduleRepository.GetByID(ctx, scheduleTime.WorkScheduleID, companyID)
+			workSchedule, err := a.workScheduleRepo.GetByID(ctx, scheduleTime.WorkScheduleID, companyID)
 			if err == nil {
 				// Calculate scheduled clock-in time for the attendance date
 				scheduledInTime := time.Date(
@@ -682,12 +700,12 @@ func (a *AttendanceServiceImpl) ApproveAttendance(ctx context.Context, req atten
 	att.LateMinutes = &lateMinutes
 
 	// Update in repository
-	if err := a.AttendanceRepository.Update(ctx, att); err != nil {
+	if err := a.attendanceRepo.Update(ctx, att); err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to approve attendance: %w", err)
 	}
 
 	// Fetch updated record
-	updatedAtt, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	updatedAtt, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get updated attendance: %w", err)
 	}
@@ -712,13 +730,8 @@ func (a *AttendanceServiceImpl) RejectAttendance(ctx context.Context, req attend
 		return attendance.AttendanceResponse{}, fmt.Errorf("user_id claim is missing or invalid")
 	}
 
-	// Validate request
-	if err := req.Validate(); err != nil {
-		return attendance.AttendanceResponse{}, err
-	}
-
 	// Get existing attendance
-	att, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	att, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		if errors.Is(err, attendance.ErrAttendanceNotFound) {
 			return attendance.AttendanceResponse{}, attendance.ErrAttendanceNotFound
@@ -731,7 +744,7 @@ func (a *AttendanceServiceImpl) RejectAttendance(ctx context.Context, req attend
 		return attendance.AttendanceResponse{}, attendance.ErrAttendanceAlreadyProcessed
 	}
 	if att.Status == "on_time" || att.Status == "late" || att.Status == "approved" {
-		return attendance.AttendanceResponse{}, fmt.Errorf("cannot reject approved attendance")
+		return attendance.AttendanceResponse{}, attendance.ErrCannotRejectApproved
 	}
 
 	// Update status and approver info
@@ -742,12 +755,12 @@ func (a *AttendanceServiceImpl) RejectAttendance(ctx context.Context, req attend
 	att.RejectionReason = &req.Reason
 
 	// Update in repository
-	if err := a.AttendanceRepository.Update(ctx, att); err != nil {
+	if err := a.attendanceRepo.Update(ctx, att); err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to reject attendance: %w", err)
 	}
 
 	// Fetch updated record
-	updatedAtt, err := a.AttendanceRepository.GetByID(ctx, req.ID, companyID)
+	updatedAtt, err := a.attendanceRepo.GetByID(ctx, req.ID, companyID)
 	if err != nil {
 		return attendance.AttendanceResponse{}, fmt.Errorf("failed to get updated attendance: %w", err)
 	}
@@ -761,13 +774,12 @@ func (a *AttendanceServiceImpl) DeleteAttendance(ctx context.Context, id string)
 	if err != nil {
 		return fmt.Errorf("failed to extract claims from context: %w", err)
 	}
-
 	companyID, ok := claims["company_id"].(string)
 	if !ok || companyID == "" {
 		return fmt.Errorf("company_id claim is missing or invalid")
 	}
 
-	if err := a.AttendanceRepository.Delete(ctx, id, companyID); err != nil {
+	if err := a.attendanceRepo.Delete(ctx, id, companyID); err != nil {
 		if errors.Is(err, attendance.ErrAttendanceNotFound) {
 			return attendance.ErrAttendanceNotFound
 		}
@@ -785,7 +797,7 @@ func (a *AttendanceServiceImpl) notifyManagersOnClockIn(ctx context.Context, com
 	}
 
 	// Get employee info
-	emp, err := a.EmployeeRepository.GetByID(ctx, employeeID)
+	emp, err := a.employeeRepo.GetByID(ctx, employeeID)
 	if err != nil {
 		return
 	}
@@ -793,7 +805,7 @@ func (a *AttendanceServiceImpl) notifyManagersOnClockIn(ctx context.Context, com
 	employeeName := emp.FullName
 
 	// Get managers of the company
-	managers, err := a.EmployeeRepository.GetManagersByCompanyID(ctx, companyID)
+	managers, err := a.employeeRepo.GetManagersByCompanyID(ctx, companyID)
 	if err != nil {
 		return
 	}
@@ -828,7 +840,7 @@ func (a *AttendanceServiceImpl) notifyManagersOnClockOut(ctx context.Context, co
 	}
 
 	// Get employee info
-	emp, err := a.EmployeeRepository.GetByID(ctx, employeeID)
+	emp, err := a.employeeRepo.GetByID(ctx, employeeID)
 	if err != nil {
 		return
 	}
@@ -836,7 +848,7 @@ func (a *AttendanceServiceImpl) notifyManagersOnClockOut(ctx context.Context, co
 	employeeName := emp.FullName
 
 	// Get managers of the company
-	managers, err := a.EmployeeRepository.GetManagersByCompanyID(ctx, companyID)
+	managers, err := a.employeeRepo.GetManagersByCompanyID(ctx, companyID)
 	if err != nil {
 		return
 	}
@@ -881,7 +893,7 @@ func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attend
 	}
 
 	// Get timezone
-	timezoneStr, err := a.BranchRepository.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
+	timezoneStr, err := a.branchRepo.GetTimezoneByEmployeeID(ctx, employeeID, companyID)
 	if err != nil {
 		return attendance.AttendanceStatusResponse{}, fmt.Errorf("failed to get timezone: %w", err)
 	}
@@ -891,7 +903,7 @@ func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attend
 	dateLocal := nowLocal.Format("2006-01-02")
 
 	// Check if employee has schedule today
-	activeSchedule, err := a.WorkScheduleRepository.GetActiveSchedule(ctx, employeeID, nowLocal, companyID)
+	activeSchedule, err := a.workScheduleRepo.GetActiveSchedule(ctx, employeeID, nowLocal, companyID)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return attendance.AttendanceStatusResponse{}, fmt.Errorf("failed to get schedule: %w", err)
 	}
@@ -910,13 +922,13 @@ func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attend
 	}
 
 	// Check if checked in today
-	hasCheckedIn, _ := a.AttendanceRepository.HasCheckedInToday(ctx, employeeID, dateLocal, companyID)
+	hasCheckedIn, _ := a.attendanceRepo.HasCheckedInToday(ctx, employeeID, dateLocal, companyID)
 
 	// Get today's attendance if exists
 	var todayAttendance *attendance.AttendanceResponse
 	if hasCheckedIn {
 		dateTime, _ := time.Parse("2006-01-02", dateLocal)
-		att, err := a.AttendanceRepository.GetByEmployeeAndDate(ctx, employeeID, dateTime, companyID)
+		att, err := a.attendanceRepo.GetByEmployeeAndDate(ctx, employeeID, dateTime, companyID)
 		if err == nil && att != nil {
 			resp := mapAttendanceToResponse(*att)
 			todayAttendance = &resp
@@ -924,7 +936,7 @@ func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attend
 	}
 
 	// Check for open session
-	openSession, err := a.AttendanceRepository.GetOpenSession(ctx, employeeID)
+	openSession, err := a.attendanceRepo.GetOpenSession(ctx, employeeID)
 	hasOpenSession := err == nil && openSession.ID != ""
 
 	var openSessionDate, openSessionID string
@@ -966,23 +978,16 @@ func (a *AttendanceServiceImpl) GetAttendanceStatus(ctx context.Context) (attend
 }
 
 func NewAttendanceService(
-	db *database.DB,
-	attendanceRepo attendance.AttendanceRepository,
-	employeeRepo employee.EmployeeRepository,
-	workScheduleRepo schedule.WorkScheduleRepository,
-	workScheduleTimeRepo schedule.WorkScheduleTimeRepository,
-	branchRepo branch.BranchRepository,
-	fileService file.FileService,
-	notificationService notification.Service,
+	deps Deps,
 ) attendance.AttendanceService {
 	return &AttendanceServiceImpl{
-		db:                         db,
-		AttendanceRepository:       attendanceRepo,
-		EmployeeRepository:         employeeRepo,
-		WorkScheduleRepository:     workScheduleRepo,
-		WorkScheduleTimeRepository: workScheduleTimeRepo,
-		BranchRepository:           branchRepo,
-		fileService:                fileService,
-		notificationService:        notificationService,
+		db:                   deps.DB,
+		attendanceRepo:       deps.AttendanceRepo,
+		employeeRepo:         deps.EmployeeRepo,
+		workScheduleRepo:     deps.WorkScheduleRepo,
+		workScheduleTimeRepo: deps.WorkScheduleTimeRepo,
+		branchRepo:           deps.BranchRepo,
+		fileService:          deps.FileService,
+		notificationService:  deps.NotificationService,
 	}
 }

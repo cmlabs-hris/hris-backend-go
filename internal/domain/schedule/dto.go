@@ -475,14 +475,14 @@ func (r *CreateEmployeeScheduleAssignmentRequest) Validate() error {
 			Field:   "start_date",
 			Message: "start_date is required",
 		})
-	} else if _, valid := validator.IsValidDateTime(r.StartDate); !valid {
+	} else if _, valid := validator.IsValidDate(r.StartDate); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "start_date",
 			Message: "start_date must be a valid date in YYYY-MM-DD format",
 		})
 	}
 	if r.EndDate != nil {
-		if _, valid := validator.IsValidDateTime(*r.EndDate); !valid {
+		if _, valid := validator.IsValidDate(*r.EndDate); !valid {
 			errs = append(errs, validator.ValidationError{
 				Field:   "end_date",
 				Message: "end_date must be a valid date in YYYY-MM-DD format",
@@ -823,7 +823,7 @@ func (r *UpdateEmployeeScheduleAssignmentRequest) Validate() error {
 			Field:   "start_date",
 			Message: "start_date is required",
 		})
-	} else if _, valid := validator.IsValidDateTime(r.StartDate); !valid {
+	} else if _, valid := validator.IsValidDate(r.StartDate); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "start_date",
 			Message: "start_date must be a valid date in YYYY-MM-DD format",
@@ -834,7 +834,7 @@ func (r *UpdateEmployeeScheduleAssignmentRequest) Validate() error {
 			Field:   "end_date",
 			Message: "end_date is required",
 		})
-	} else if _, valid := validator.IsValidDateTime(r.EndDate); !valid {
+	} else if _, valid := validator.IsValidDate(r.EndDate); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "end_date",
 			Message: "end_date must be a valid date in YYYY-MM-DD format",
@@ -880,14 +880,14 @@ func (r *AssignScheduleRequest) Validate() error {
 			Field:   "start_date",
 			Message: "start_date is required",
 		})
-	} else if _, valid := validator.IsValidDateTime(r.StartDate); !valid {
+	} else if _, valid := validator.IsValidDate(r.StartDate); !valid {
 		errs = append(errs, validator.ValidationError{
 			Field:   "start_date",
 			Message: "start_date must be a valid date in YYYY-MM-DD format",
 		})
 	}
 	if r.EndDate != nil {
-		if _, valid := validator.IsValidDateTime(*r.EndDate); !valid {
+		if _, valid := validator.IsValidDate(*r.EndDate); !valid {
 			errs = append(errs, validator.ValidationError{
 				Field:   "end_date",
 				Message: "end_date must be a valid date in YYYY-MM-DD format",

@@ -61,20 +61,17 @@ func (h *attendanceHandlerImpl) ClockIn(w http.ResponseWriter, r *http.Request) 
 
 	// Get file from form
 	file, fileHeader, err := r.FormFile("photo")
-	if err != nil {
-		if err == http.ErrMissingFile {
-			response.BadRequest(w, "Attendance proof photo is required", nil)
-			return
-		}
+	if err != nil && err != http.ErrMissingFile {
 		slog.Error("Failed to get file from form", "error", err)
 		response.BadRequest(w, "Invalid file upload", nil)
 		return
 	}
-	defer file.Close()
 
-	// Attach file to request
-	req.File = file
-	req.FileHeader = fileHeader
+	if file != nil {
+		defer file.Close()
+		req.File = file
+		req.FileHeader = fileHeader
+	}
 
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -119,20 +116,17 @@ func (h *attendanceHandlerImpl) ClockOut(w http.ResponseWriter, r *http.Request)
 
 	// Get file from form
 	file, fileHeader, err := r.FormFile("photo")
-	if err != nil {
-		if err == http.ErrMissingFile {
-			response.BadRequest(w, "Attendance proof photo is required", nil)
-			return
-		}
+	if err != nil && err != http.ErrMissingFile {
 		slog.Error("Failed to get file from form", "error", err)
 		response.BadRequest(w, "Invalid file upload", nil)
 		return
 	}
-	defer file.Close()
 
-	// Attach file to request
-	req.File = file
-	req.FileHeader = fileHeader
+	if file != nil {
+		defer file.Close()
+		req.File = file
+		req.FileHeader = fileHeader
+	}
 
 	// Validate request
 	if err := req.Validate(); err != nil {
@@ -372,6 +366,12 @@ func (h *attendanceHandlerImpl) Reject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.ID = id
+
+	// Validate request
+	if err := req.Validate(); err != nil {
+		response.HandleError(w, err)
+		return
+	}
 
 	result, err := h.attendanceService.RejectAttendance(r.Context(), req)
 	if err != nil {
