@@ -2,12 +2,14 @@ package postgresql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/domain/subscription"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/database"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 )
 
@@ -634,28 +636,51 @@ func (r *invoiceRepository) Create(ctx context.Context, inv subscription.Invoice
 		inv.Amount, inv.IsProrated, inv.PlanSnapshotName, inv.PricePerSeatSnapshot, inv.SeatCountSnapshot, string(inv.BillingCycleSnapshot),
 		inv.PeriodStart, inv.PeriodEnd, string(inv.Status), inv.Description, inv.Notes,
 	).Scan(&inv.ID, &inv.IssueDate, &inv.CreatedAt, &inv.UpdatedAt)
+	if err != nil {
+		// The one-pending-invoice-per-company partial unique index is the concurrency
+		// backstop: two racing checkouts can both pass the application-level
+		// HasPendingInvoice check, but only one INSERT can succeed.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
+			return inv, subscription.ErrPendingInvoiceExists
+		}
+		return inv, err
+	}
 
-	return inv, err
+	return inv, nil
 }
 
-func (r *invoiceRepository) UpdateStatus(ctx context.Context, id string, status subscription.InvoiceStatus) error {
+func (r *invoiceRepository) UpdateStatus(ctx context.Context, id string, status subscription.InvoiceStatus) (bool, error) {
 	q := GetQuerier(ctx, r.db)
 
-	query := `UPDATE invoices SET status = $2::invoice_status, updated_at = NOW() WHERE id = $1`
-	_, err := q.Exec(ctx, query, id, string(status))
-	return err
+	// Guard with status='pending' (A + D): only a pending invoice can transition.
+	// This makes the transition idempotent and protects against a late EXPIRED/FAILED
+	// webhook overwriting an already-PAID invoice (paid-vs-expired race).
+	query := `UPDATE invoices SET status = $2::invoice_status, updated_at = NOW() WHERE id = $1 AND status = 'pending'`
+	tag, err := q.Exec(ctx, query, id, string(status))
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
-func (r *invoiceRepository) UpdatePayment(ctx context.Context, id string, status subscription.InvoiceStatus, paidAt interface{}, method, channel string) error {
+func (r *invoiceRepository) UpdatePayment(ctx context.Context, id string, status subscription.InvoiceStatus, paidAt interface{}, method, channel string) (bool, error) {
 	q := GetQuerier(ctx, r.db)
 
+	// Guard with status='pending' (A): only the first webhook that wins the row lock
+	// and transitions the invoice from pending->paid returns RowsAffected()>0.
+	// Duplicate/retry Xendit webhooks hit this re-evaluated WHERE clause on the newest
+	// row version and get RowsAffected()==0, so the subscription is not extended twice.
 	query := `
 		UPDATE invoices
 		SET status = $2::invoice_status, paid_at = $3, payment_method = $4, payment_channel = $5, updated_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND status = 'pending'
 	`
-	_, err := q.Exec(ctx, query, id, string(status), paidAt, method, channel)
-	return err
+	tag, err := q.Exec(ctx, query, id, string(status), paidAt, method, channel)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (r *invoiceRepository) ListByCompanyID(ctx context.Context, companyID string) ([]subscription.Invoice, error) {

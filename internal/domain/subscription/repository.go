@@ -91,11 +91,14 @@ type InvoiceRepository interface {
 	// Create creates a new invoice
 	Create(ctx context.Context, invoice Invoice) (Invoice, error)
 
-	// UpdateStatus updates invoice status
-	UpdateStatus(ctx context.Context, id string, status InvoiceStatus) error
+	// UpdateStatus updates invoice status. It only transitions from 'pending'
+	// (idempotent against duplicate/late webhooks) and returns true if a row was updated.
+	UpdateStatus(ctx context.Context, id string, status InvoiceStatus) (bool, error)
 
-	// UpdatePayment updates invoice with payment details
-	UpdatePayment(ctx context.Context, id string, status InvoiceStatus, paidAt interface{}, method, channel string) error
+	// UpdatePayment updates invoice with payment details. It only transitions from
+	// 'pending' (idempotent against duplicate Xendit retry webhooks) and returns
+	// true if the invoice was actually transitioned from pending to the paid state.
+	UpdatePayment(ctx context.Context, id string, status InvoiceStatus, paidAt interface{}, method, channel string) (bool, error)
 
 	// ListByCompanyID retrieves all invoices for a company
 	ListByCompanyID(ctx context.Context, companyID string) ([]Invoice, error)

@@ -303,72 +303,101 @@ func (s *subscriptionService) HandleWebhook(ctx context.Context, payload subscri
 }
 
 func (s *subscriptionService) handlePaymentSuccess(ctx context.Context, invoice subscription.Invoice, payload subscription.XenditWebhookPayload) error {
-	// Update invoice
-	paidAt := time.Now()
-	if err := s.invoiceRepo.UpdatePayment(
-		ctx,
-		invoice.ID,
-		subscription.InvoiceStatusPaid,
-		paidAt,
-		payload.PaymentMethod,
-		payload.PaymentChannel,
-	); err != nil {
-		return fmt.Errorf("update invoice payment: %w", err)
-	}
+	// A + B: the invoice->paid transition and the subscription extension run atomically
+	// inside one DB transaction. UpdatePayment only transitions from 'pending', so a
+	// duplicate/retry Xendit webhook returns transitioned=false and the subscription is
+	// never extended a second time. If we crash mid-way, the whole transaction rolls back
+	// and Xendit retries cleanly.
+	err := postgresql.WithTransaction(ctx, s.db, func(tx pgx.Tx) error {
+		txCtx := context.WithValue(ctx, "tx", tx)
 
-	// Get subscription
-	sub, err := s.subscriptionRepo.GetByID(ctx, invoice.SubscriptionID)
-	if err != nil {
-		return fmt.Errorf("get subscription: %w", err)
-	}
+		// Update invoice
+		paidAt := time.Now()
+		transitioned, err := s.invoiceRepo.UpdatePayment(
+			txCtx,
+			invoice.ID,
+			subscription.InvoiceStatusPaid,
+			paidAt,
+			payload.PaymentMethod,
+			payload.PaymentChannel,
+		)
+		if err != nil {
+			return fmt.Errorf("update invoice payment: %w", err)
+		}
+		if !transitioned {
+			// Already processed by a previous/parallel webhook (duplicate/retry).
+			log.Printf("Webhook: invoice %s already processed (duplicate/retry), skipping", invoice.ID)
+			return nil
+		}
 
-	// Get plan to get the plan ID for the snapshot name
-	plan, err := s.planRepo.GetByName(ctx, invoice.PlanSnapshotName)
-	if err != nil {
-		return fmt.Errorf("get plan by name: %w", err)
-	}
+		// Get subscription
+		sub, err := s.subscriptionRepo.GetByID(txCtx, invoice.SubscriptionID)
+		if err != nil {
+			return fmt.Errorf("get subscription: %w", err)
+		}
 
-	// Update subscription based on invoice type
-	if invoice.IsProrated {
-		// Prorated invoice (mid-cycle seat increase) - update seats only, don't extend period
-		sub.MaxSeats = invoice.SeatCountSnapshot
-		sub.PendingMaxSeats = nil // Clear any pending downsell
-		log.Printf("Prorated payment success: Company %s, Seats %d → %d (period unchanged)",
-			invoice.CompanyID, sub.MaxSeats, invoice.SeatCountSnapshot)
-	} else {
-		// Regular renewal or upgrade - update seats AND extend period
-		sub.PlanID = plan.ID
-		sub.MaxSeats = invoice.SeatCountSnapshot
-		sub.CurrentPeriodStart = invoice.PeriodStart
-		sub.CurrentPeriodEnd = invoice.PeriodEnd
-		sub.BillingCycle = subscription.BillingCycle(invoice.BillingCycleSnapshot)
-		sub.PendingPlanID = nil
-		sub.PendingMaxSeats = nil
-		sub.TrialEndsAt = nil
-		log.Printf("Payment success: Company %s, Plan %s, Seats %d",
-			invoice.CompanyID, invoice.PlanSnapshotName, invoice.SeatCountSnapshot)
-	}
+		// Get plan to get the plan ID for the snapshot name
+		plan, err := s.planRepo.GetByName(txCtx, invoice.PlanSnapshotName)
+		if err != nil {
+			return fmt.Errorf("get plan by name: %w", err)
+		}
 
-	sub.Status = subscription.StatusActive
+		// Update subscription based on invoice type
+		if invoice.IsProrated {
+			// Prorated invoice (mid-cycle seat increase) - update seats only, don't extend period
+			sub.MaxSeats = invoice.SeatCountSnapshot
+			sub.PendingMaxSeats = nil // Clear any pending downsell
+			log.Printf("Prorated payment success: Company %s, Seats %d → %d (period unchanged)",
+				invoice.CompanyID, sub.MaxSeats, invoice.SeatCountSnapshot)
+		} else {
+			// Regular renewal or upgrade - update seats AND extend period
+			sub.PlanID = plan.ID
+			sub.MaxSeats = invoice.SeatCountSnapshot
+			sub.CurrentPeriodStart = invoice.PeriodStart
+			sub.CurrentPeriodEnd = invoice.PeriodEnd
+			sub.BillingCycle = subscription.BillingCycle(invoice.BillingCycleSnapshot)
+			sub.PendingPlanID = nil
+			sub.PendingMaxSeats = nil
+			sub.TrialEndsAt = nil
+			log.Printf("Payment success: Company %s, Plan %s, Seats %d",
+				invoice.CompanyID, invoice.PlanSnapshotName, invoice.SeatCountSnapshot)
+		}
 
-	if err := s.subscriptionRepo.Update(ctx, sub); err != nil {
-		return fmt.Errorf("update subscription: %w", err)
-	}
+		sub.Status = subscription.StatusActive
 
-	return nil
+		if err := s.subscriptionRepo.Update(txCtx, sub); err != nil {
+			return fmt.Errorf("update subscription: %w", err)
+		}
+
+		return nil
+	})
+
+	return err
 }
 
 func (s *subscriptionService) handlePaymentExpired(ctx context.Context, invoice subscription.Invoice) error {
-	if err := s.invoiceRepo.UpdateStatus(ctx, invoice.ID, subscription.InvoiceStatusExpired); err != nil {
+	// D: guarded by status='pending', so a late EXPIRED webhook cannot overwrite an
+	// invoice that was already PAID (paid-vs-expired race).
+	transitioned, err := s.invoiceRepo.UpdateStatus(ctx, invoice.ID, subscription.InvoiceStatusExpired)
+	if err != nil {
 		return fmt.Errorf("update invoice status: %w", err)
+	}
+	if !transitioned {
+		log.Printf("Webhook: invoice %s already transitioned (paid?), skipping expired", invoice.ID)
+		return nil
 	}
 	log.Printf("Invoice expired: %s for company %s", invoice.ID, invoice.CompanyID)
 	return nil
 }
 
 func (s *subscriptionService) handlePaymentFailed(ctx context.Context, invoice subscription.Invoice) error {
-	if err := s.invoiceRepo.UpdateStatus(ctx, invoice.ID, subscription.InvoiceStatusFailed); err != nil {
+	transitioned, err := s.invoiceRepo.UpdateStatus(ctx, invoice.ID, subscription.InvoiceStatusFailed)
+	if err != nil {
 		return fmt.Errorf("update invoice status: %w", err)
+	}
+	if !transitioned {
+		log.Printf("Webhook: invoice %s already transitioned, skipping failed", invoice.ID)
+		return nil
 	}
 	log.Printf("Payment failed: %s for company %s", invoice.ID, invoice.CompanyID)
 	return nil
@@ -731,7 +760,7 @@ func (s *subscriptionService) CancelSubscription(ctx context.Context, companyID 
 			}
 
 			// Update invoice status to expired in DB
-			if err := s.invoiceRepo.UpdateStatus(txCtx, inv.ID, subscription.InvoiceStatusExpired); err != nil {
+			if _, err := s.invoiceRepo.UpdateStatus(txCtx, inv.ID, subscription.InvoiceStatusExpired); err != nil {
 				return fmt.Errorf("expire invoice %s: %w", inv.ID, err)
 			}
 			expiredCount++
@@ -800,7 +829,7 @@ func (s *subscriptionService) CancelPendingInvoice(ctx context.Context, companyI
 		}
 
 		// Update invoice status to expired
-		if err := s.invoiceRepo.UpdateStatus(txCtx, invoice.ID, subscription.InvoiceStatusExpired); err != nil {
+		if _, err := s.invoiceRepo.UpdateStatus(txCtx, invoice.ID, subscription.InvoiceStatusExpired); err != nil {
 			return fmt.Errorf("update invoice status: %w", err)
 		}
 
