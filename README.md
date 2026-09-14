@@ -28,6 +28,8 @@ HRIS Backend Go provides a comprehensive REST API for managing every aspect of h
 - [Features](#features)
 - [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
+- [Security & Reliability Middleware](#security--reliability-middleware)
+- [Database Schema (ERD)](#database-schema-erd)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
 - [Installation & Setup](#installation--setup)
@@ -110,7 +112,265 @@ The project follows a **Clean Architecture / Layered Architecture** pattern:
 └─────────────────────────────────────────────┘
 ```
 
-**Middleware Chain:** CORS → Logging → Content-Type → CleanPath → Recovery → Heartbeat → JWT Verification → Role Authorization → Subscription Feature Gate
+**Middleware Chain:** CORS → Security Headers → Logging → Content-Type → CleanPath → Recovery → Heartbeat → Request Timeout → Rate Limiting → JWT Verification → Role Authorization → Subscription Feature Gate
+
+---
+
+## Security & Reliability Middleware
+
+Three process-local middlewares harden every request before it reaches a handler
+(`internal/handler/http/middleware/`):
+
+| Middleware | What it does | Notes |
+|---|---|---|
+| `SecurityHeaders` | `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `CSP`, `Cross-Origin-Resource-Policy`, `Permissions-Policy`; HSTS on TLS only | `Cross-Origin-Resource-Policy: cross-origin` is required because the Next.js frontend embeds `/uploads` assets from another origin |
+| `RateLimiter` | Per-key token bucket (default key: client IP). Global API bucket `20 rps / burst 40`, credential endpoints `burst 10 then ~12 rpm`, answers `429` with `Retry-After` and `X-RateLimit-*` | In-memory and process-local; move the counters to Redis when the API runs on several replicas. The Xendit webhook is deliberately not throttled beyond the global bucket so payment events are never dropped |
+| `RequestTimeout` | 30s deadline, answers `504` with the standard error envelope and cancels the handler context (so long `pgx` queries abort too) | Server-Sent Events (`Accept: text/event-stream`, or any `/…/stream` route such as `/api/v1/notifications/stream`) are exempt, otherwise live notifications would be cut off |
+
+The timeout middleware wraps the raw `http.ResponseWriter` in a small
+`timeoutWriter` that drops late writes (`http.ErrHandlerTimeout`) and never
+overwrites an already-committed response; panics are propagated to chi's
+`Recoverer` unchanged. All three middlewares are covered by table-driven unit
+tests (`go test -race ./internal/handler/http/middleware/...`).
+
+---
+
+## Database Schema (ERD)
+
+34 tables across the core HR domain and the billing platform. Migrations live in
+`internal/infrastructure/database/postgresql/migrations/` and are applied with
+[golang-migrate](https://github.com/golang-migrate/migrate) using the `pgx5` driver.
+
+### Core HR domain
+
+```mermaid
+erDiagram
+    companies ||--o{ users : employs
+    companies ||--o{ employees : owns
+    companies ||--o{ positions : defines
+    companies ||--o{ grades : defines
+    companies ||--o{ branches : defines
+    companies ||--o{ work_schedules : defines
+    companies ||--o{ leave_types : defines
+    companies ||--o{ public_holidays : observes
+
+    users ||--o| employees : "is"
+    users ||--o{ refresh_tokens : holds
+    users ||--o{ password_reset_tokens : requests
+    users ||--o{ notifications : receives
+    users ||--o{ notification_preferences : configures
+    users ||--o{ audit_trails : "acts in"
+
+    employees ||--o{ employee_invitations : "invited by"
+    employees ||--o{ employee_schedule_assignments : assigned
+    employees ||--o{ employee_job_history : "promoted in"
+    employees ||--o{ employee_documents : uploads
+    employees ||--o{ employee_payroll_components : receives
+    employees ||--o{ payroll_records : "paid monthly"
+    employees ||--o{ attendances : "clocks in"
+    employees ||--o{ leave_quotas : entitled
+    employees ||--o{ leave_requests : requests
+
+    work_schedules ||--o{ work_schedule_times : "time slots"
+    work_schedules ||--o{ work_schedule_locations : geofence
+    work_schedule_times ||--o{ attendances : references
+
+    leave_types ||--o{ leave_quotas : grants
+    leave_types ||--o{ leave_requests : categorises
+    leave_types ||--o{ attendances : "explains absence"
+
+    document_types ||--o{ document_templates : templates
+    document_types ||--o{ employee_documents : classifies
+
+    companies {
+        uuid id PK
+        varchar username UK
+        varchar name
+        text logo_url
+    }
+    users {
+        uuid id PK
+        uuid company_id FK
+        varchar email UK
+        varchar role "owner|manager|employee|pending"
+        boolean email_verified
+    }
+    employees {
+        uuid id PK
+        uuid user_id FK
+        uuid company_id FK
+        uuid work_schedule_id FK
+        uuid position_id FK
+        uuid grade_id FK
+        uuid branch_id FK
+        varchar employee_code UK
+        varchar nik UK
+        employment_type_enum employment_type
+        employment_status_enum employment_status
+        numeric base_salary
+    }
+    attendances {
+        uuid id PK
+        uuid employee_id FK
+        uuid company_id FK
+        date date UK
+        timestamptz clock_in
+        timestamptz clock_out
+        double clock_in_latitude
+        double clock_in_longitude
+        text clock_in_proof_url
+        varchar status "present|late|leave|absent"
+        uuid approved_by FK
+        smallint late_minutes
+        smallint overtime_minutes
+    }
+    leave_types {
+        uuid id PK
+        uuid company_id FK
+        varchar code UK
+        boolean has_quota
+        boolean requires_approval
+        jsonb quota_rules
+    }
+    leave_quotas {
+        uuid id PK
+        uuid employee_id FK
+        uuid leave_type_id FK
+        smallint year
+        numeric used_quota
+        numeric available_quota
+    }
+    leave_requests {
+        uuid id PK
+        uuid employee_id FK
+        uuid leave_type_id FK
+        date start_date
+        date end_date
+        leave_request_status_enum status
+        uuid approved_by FK
+    }
+    work_schedules {
+        uuid id PK
+        uuid company_id FK
+        varchar type "WFO|WFA|Hybrid"
+        smallint grace_period_minutes
+    }
+    work_schedule_locations {
+        uuid id PK
+        uuid work_schedule_id FK
+        double latitude
+        double longitude
+        int radius_meters
+    }
+    payroll_records {
+        uuid id PK
+        uuid employee_id FK
+        uuid company_id FK
+        smallint period_month
+        smallint period_year
+        numeric gross_salary
+        numeric net_salary
+        payroll_status status "draft|paid"
+    }
+    employee_invitations {
+        uuid id PK
+        uuid employee_id FK
+        uuid company_id FK
+        uuid invited_by_employee_id FK
+        uuid token UK
+        varchar status "pending|accepted|revoked"
+        varchar role
+    }
+    audit_trails {
+        uuid id PK
+        uuid user_id FK
+        audit_action action
+        varchar table_name
+        uuid record_id
+        jsonb old_value
+        jsonb new_value
+    }
+```
+
+### Billing & platform domain
+
+```mermaid
+erDiagram
+    companies ||--o| subscriptions : "has one"
+    companies ||--o{ invoices : "is billed"
+    companies ||--o{ payroll_components : defines
+    companies ||--o| payroll_settings : configures
+
+    subscription_plans ||--o{ subscriptions : "subscribed to"
+    subscription_plans ||--o{ plan_features : includes
+    features ||--o{ plan_features : "granted by"
+    subscriptions ||--o{ invoices : "billed by"
+
+    subscription_plans {
+        uuid id PK
+        varchar name UK
+        numeric price_per_seat
+        smallint tier_level
+        int max_seats
+    }
+    features {
+        uuid id PK
+        varchar code UK
+        varchar name
+    }
+    plan_features {
+        uuid plan_id PK
+        uuid feature_id PK
+        boolean is_active
+    }
+    subscriptions {
+        uuid id PK
+        uuid company_id FK
+        uuid plan_id FK
+        subscription_status status "trial|active|past_due|cancelled|expired"
+        int max_seats
+        int pending_max_seats
+        timestamptz current_period_start
+        timestamptz current_period_end
+        billing_cycle_enum billing_cycle
+    }
+    invoices {
+        uuid id PK
+        uuid company_id FK
+        uuid subscription_id FK
+        varchar xendit_invoice_id
+        numeric amount
+        varchar plan_snapshot_name
+        numeric price_per_seat_snapshot
+        int seat_count_snapshot
+        invoice_status status "pending|paid|expired|failed"
+        boolean is_prorated
+        timestamptz paid_at
+    }
+    payroll_settings {
+        uuid id PK
+        uuid company_id FK
+        boolean late_deduction_enabled
+        numeric late_deduction_per_minute
+        boolean overtime_enabled
+        numeric overtime_pay_per_minute
+    }
+    payroll_components {
+        uuid id PK
+        uuid company_id FK
+        varchar name UK
+        payroll_component_type type "allowance|deduction"
+        boolean is_taxable
+    }
+```
+
+**Data-integrity highlights**
+
+- `subscriptions` is unique per company and `invoices` carries a **partial unique index on `(company_id) WHERE status = 'pending'`** (migration `000009`), so two racing checkouts can never create two payable invoices.
+- Invoice amount, plan name, price per seat and seat count are **immutable snapshots**, so historical invoices stay correct after a plan price change.
+- `attendances` enforces `UNIQUE(employee_id, date)` plus `clock_out >= clock_in`; `employee_schedule_assignments` uses a `btree_gist` exclusion constraint to forbid overlapping schedules.
+- `leave_quotas.available_quota` is a **generated column** (`opening + earned + rollover + adjustment - used - pending`), so a balance can never drift from its components.
+- Money columns are `DECIMAL(15,2)` and are computed in Go with `shopspring/decimal`.
 
 ---
 
