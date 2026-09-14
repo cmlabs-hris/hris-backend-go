@@ -145,3 +145,25 @@ func Conflict(w http.ResponseWriter, message string) {
 		},
 	})
 }
+
+// TooManyRequests is returned by the rate limiting middleware.
+func TooManyRequests(w http.ResponseWriter, message string) {
+	writeJSON(w, http.StatusTooManyRequests, Response{
+		Success: false,
+		Error: &ErrorDetail{
+			Code:    "TOO_MANY_REQUESTS",
+			Message: message,
+		},
+	})
+}
+
+// GatewayTimeout is returned by the request timeout middleware.
+func GatewayTimeout(w http.ResponseWriter, message string) {
+	writeJSON(w, http.StatusGatewayTimeout, Response{
+		Success: false,
+		Error: &ErrorDetail{
+			Code:    "GATEWAY_TIMEOUT",
+			Message: message,
+		},
+	})
+}

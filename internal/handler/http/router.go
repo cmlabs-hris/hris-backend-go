@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/cmlabs-hris/hris-backend-go/internal/handler/http/middleware"
 	"github.com/cmlabs-hris/hris-backend-go/internal/pkg/jwt"
@@ -15,8 +16,35 @@ import (
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
+// Middleware tuning. Kept in code (rather than env vars) so the defaults are
+// reviewable in PRs; move them into config when per-environment tuning is needed.
+const (
+	// Global API throttle, keyed by client IP. The burst absorbs the parallel
+	// requests a dashboard page fires, the refill rate stops runaway loops.
+	apiRateLimitPerSecond = 20
+	apiRateLimitBurst     = 40
+
+	// Credential endpoints (login, register, password reset) share a much
+	// smaller bucket: burst 10, then ~12 requests per minute sustained.
+	authRateLimitPerSecond = 0.2
+	authRateLimitBurst     = 10
+
+	// Idle rate limit buckets are garbage collected after this duration.
+	rateLimitIdleTTL = 10 * time.Minute
+
+	// Upper bound for regular API requests (SSE streams are exempt).
+	requestTimeout = 30 * time.Second
+)
+
 func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler CompanyHandler, leaveHandler LeaveHandler, masterHandler MasterHandler, scheduleHandler ScheduleHandler, attendanceHandler AttendanceHandler, employeeHandler EmployeeHandler, invitationHandler InvitationHandler, payrollHandler PayrollHandler, dashboardHandler DashboardHandler, employeeDashboardHandler EmployeeDashboardHandler, notificationHandler NotificationHandler, reportHandler ReportHandler, subscriptionHandler SubscriptionHandler, subscriptionMiddleware *middleware.SubscriptionMiddleware, storageBasePath string) *chi.Mux {
 	r := chi.NewRouter()
+
+	// Per-IP limiters: the API gets a generous bucket, credential endpoints a
+	// much stricter one. The Xendit webhook stays under the global bucket only,
+	// since throttling payment callbacks risks dropping legitimate events.
+	apiLimiter := middleware.NewRateLimiter(apiRateLimitPerSecond, apiRateLimitBurst, rateLimitIdleTTL)
+	authLimiter := middleware.NewRateLimiter(authRateLimitPerSecond, authRateLimitBurst, rateLimitIdleTTL)
+
 	logFormat := httplog.SchemaECS.Concise(false)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		ReplaceAttr: logFormat.ReplaceAttr,
@@ -35,6 +63,9 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		MaxAge:           300,
 	}))
 
+	// Baseline hardening headers for every response (CSP, nosniff, HSTS on TLS, ...).
+	r.Use(middleware.SecurityHeaders)
+
 	// r.Use(chiMiddleware.RealIP)
 
 	r.Use(httplog.RequestLogger(logger, &httplog.Options{
@@ -48,6 +79,10 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	r.Use(chiMiddleware.CleanPath)
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(chiMiddleware.Heartbeat("/"))
+
+	// Hard deadline for regular requests; stream endpoints (SSE) are skipped by
+	// the default skip predicate so live notifications keep their connection.
+	r.Use(middleware.RequestTimeout(requestTimeout))
 
 	fileServer := http.FileServer(http.Dir(storageBasePath))
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
@@ -63,6 +98,8 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 	))
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Global throttle for the whole API surface, keyed by client IP.
+		r.Use(apiLimiter.Middleware())
 
 		// Public invitation route (no auth required) - uses /view/ prefix to avoid conflict with /my
 		r.Get("/invitations/view/{token}", invitationHandler.GetInvitationByToken)
@@ -74,6 +111,10 @@ func NewRouter(JWTService jwt.Service, authHandler AuthHandler, companyhandler C
 		r.Post("/webhook/xendit", subscriptionHandler.HandleWebhook)
 
 		r.Route("/auth", func(r chi.Router) {
+			// Stricter bucket for every credential-related route, including the
+			// OAuth handshake, to blunt credential stuffing and password guessing.
+			r.Use(authLimiter.Middleware())
+
 			r.Post("/register", authHandler.Register)
 			r.Post("/refresh", authHandler.RefreshToken)
 			r.Post("/logout", authHandler.Logout)
