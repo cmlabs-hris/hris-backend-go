@@ -128,7 +128,10 @@ func (c *Client) CreateInvoice(req CreateInvoiceRequest) (*InvoiceResponse, erro
 		Execute()
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to create invoice: %w", err)
+		// The SDK declares Error() on the value type while the generated client
+		// returns *common.XenditSdkError, so wrap the dereferenced value: wrapping
+		// the pointer compiles but defeats errors.Is/errors.As (caught by go vet).
+		return nil, fmt.Errorf("failed to create invoice: %w", *err)
 	}
 
 	return toInvoiceResponse(resp), nil
@@ -140,7 +143,7 @@ func (c *Client) GetInvoice(invoiceID string) (*InvoiceResponse, error) {
 
 	resp, _, err := c.invoiceAPI.GetInvoiceById(ctx, invoiceID).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get invoice: %w", err)
+		return nil, fmt.Errorf("failed to get invoice: %w", *err)
 	}
 
 	return toInvoiceResponse(resp), nil
@@ -152,7 +155,7 @@ func (c *Client) ExpireInvoice(invoiceID string) (*InvoiceResponse, error) {
 
 	resp, _, err := c.invoiceAPI.ExpireInvoice(ctx, invoiceID).Execute()
 	if err != nil {
-		return nil, fmt.Errorf("failed to expire invoice: %w", err)
+		return nil, fmt.Errorf("failed to expire invoice: %w", *err)
 	}
 
 	return toInvoiceResponse(resp), nil
