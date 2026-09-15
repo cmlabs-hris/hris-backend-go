@@ -696,7 +696,7 @@ func (a *attendanceRepository) BulkCreateAbsences(ctx context.Context, attendanc
 			employee_id, company_id, date, work_schedule_time_id,
 			status, work_hours_in_minutes, clock_in, clock_out, created_at, updated_at
 		) VALUES %s
-		ON CONFLICT (employee_id, date, company_id) DO NOTHING
+		ON CONFLICT (employee_id, date) DO NOTHING
 	`, strings.Join(valueStrings, ", "))
 
 	_, err := q.Exec(ctx, query, valueArgs...)
