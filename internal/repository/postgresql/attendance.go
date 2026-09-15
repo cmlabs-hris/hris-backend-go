@@ -676,8 +676,8 @@ func (a *attendanceRepository) BulkCreateAbsences(ctx context.Context, attendanc
 	for i, att := range attendances {
 		base := i * 8
 		valueStrings = append(valueStrings, fmt.Sprintf(
-			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, NOW(), NOW())",
-			base+1, base+2, base+3, base+4, base+5, base+6, base+7,
+			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, NOW(), NOW())",
+			base+1, base+2, base+3, base+4, base+5, base+6, base+7, base+8,
 		))
 		valueArgs = append(valueArgs,
 			att.EmployeeID,
