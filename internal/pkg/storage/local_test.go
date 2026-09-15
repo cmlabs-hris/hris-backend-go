@@ -24,6 +24,23 @@ func TestLocalStorageUploadReturnsForwardSlashPath(t *testing.T) {
 	}
 }
 
+func TestLocalStorageUploadNormalizesBackslashInput(t *testing.T) {
+	s, err := NewLocalStorage(t.TempDir(), "http://localhost:8080/uploads")
+	if err != nil {
+		t.Fatalf("new local storage: %v", err)
+	}
+
+	// A caller may pass a Windows-style path; the stored key must still use "/"
+	// regardless of the host OS (filepath.ToSlash is a no-op on Linux).
+	path, err := s.Upload(context.Background(), strings.NewReader("logo"), "logos\\acme\\acme.png", "image/png")
+	if err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	if want := "logos/acme/acme.png"; path != want {
+		t.Errorf("stored path = %q, want %q", path, want)
+	}
+}
+
 func TestLocalStorageGetURLFromRelativePath(t *testing.T) {
 	s, err := NewLocalStorage(t.TempDir(), "http://localhost:8080/uploads")
 	if err != nil {

@@ -28,8 +28,12 @@ func NewLocalStorage(basePath, baseURL string) (*LocalStorage, error) {
 }
 
 func (s *LocalStorage) Upload(ctx context.Context, file io.Reader, path string, contentType string) (string, error) {
+	// Normalize Windows-style separators first: storage keys always use "/"
+	// so paths written on Windows resolve identically on any host OS.
+	normalized := strings.ReplaceAll(path, "\\", "/")
+
 	// Sanitize path to prevent directory traversal
-	cleanPath := filepath.Clean(path)
+	cleanPath := filepath.Clean(normalized)
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
 	// Ensure file is within basePath (use filepath.Clean on basePath too for consistent comparison)
@@ -64,7 +68,7 @@ func (s *LocalStorage) Upload(ctx context.Context, file io.Reader, path string, 
 }
 
 func (s *LocalStorage) Download(ctx context.Context, path string) (io.ReadCloser, error) {
-	cleanPath := filepath.Clean(path)
+	cleanPath := filepath.Clean(strings.ReplaceAll(path, "\\", "/"))
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
 	// Security check (use filepath.Clean on basePath for consistent comparison)
@@ -85,7 +89,7 @@ func (s *LocalStorage) Download(ctx context.Context, path string) (io.ReadCloser
 }
 
 func (s *LocalStorage) Delete(ctx context.Context, path string) error {
-	cleanPath := filepath.Clean(path)
+	cleanPath := filepath.Clean(strings.ReplaceAll(path, "\\", "/"))
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
 	// Security check (use filepath.Clean for consistent comparison)
@@ -112,8 +116,10 @@ func (s *LocalStorage) GetURL(ctx context.Context, path string, expiry time.Dura
 	}
 
 	// Normalize Windows backslashes to forward slashes so the URL is portable
-	// and never embeds OS-specific path separators.
-	norm := filepath.ToSlash(path)
+	// and never embeds OS-specific path separators. Use explicit replacement
+	// instead of filepath.ToSlash: ToSlash is a no-op on Linux (where "\" is
+	// a legal filename character), which made the result OS-dependent.
+	norm := strings.ReplaceAll(path, "\\", "/")
 
 	// If the stored path is already an absolute URL (legacy rows persisted the
 	// full URL), return it as-is. Prefixing baseURL again would produce a
@@ -127,7 +133,7 @@ func (s *LocalStorage) GetURL(ctx context.Context, path string, expiry time.Dura
 }
 
 func (s *LocalStorage) Exists(ctx context.Context, path string) (bool, error) {
-	cleanPath := filepath.Clean(path)
+	cleanPath := filepath.Clean(strings.ReplaceAll(path, "\\", "/"))
 	fullPath := filepath.Join(s.basePath, cleanPath)
 
 	// Security check (use filepath.Clean for consistent comparison)
