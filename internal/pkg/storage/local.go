@@ -58,7 +58,9 @@ func (s *LocalStorage) Upload(ctx context.Context, file io.Reader, path string, 
 		return "", fmt.Errorf("failed to write file: %w", err)
 	}
 
-	return cleanPath, nil
+	// Return a forward-slash relative path so it is safe to persist in the DB
+	// and to embed in a URL regardless of the host OS (Windows uses backslashes).
+	return filepath.ToSlash(cleanPath), nil
 }
 
 func (s *LocalStorage) Download(ctx context.Context, path string) (io.ReadCloser, error) {
@@ -103,10 +105,25 @@ func (s *LocalStorage) Delete(ctx context.Context, path string) error {
 }
 
 func (s *LocalStorage) GetURL(ctx context.Context, path string, expiry time.Duration) (string, error) {
-	// For local storage, return static URL
-	// In production with auth, you might generate signed tokens
-	cleanPath := filepath.Clean(path)
-	return fmt.Sprintf("%s/%s", s.baseURL, cleanPath), nil
+	// For local storage, return a static URL.
+	// In production with auth, you might generate signed tokens.
+	if path == "" {
+		return "", nil
+	}
+
+	// Normalize Windows backslashes to forward slashes so the URL is portable
+	// and never embeds OS-specific path separators.
+	norm := filepath.ToSlash(path)
+
+	// If the stored path is already an absolute URL (legacy rows persisted the
+	// full URL), return it as-is. Prefixing baseURL again would produce a
+	// malformed, double-prefixed URL (e.g. .../uploads/<baseURL>/...) that the
+	// browser can't load.
+	if strings.HasPrefix(norm, "http://") || strings.HasPrefix(norm, "https://") {
+		return norm, nil
+	}
+
+	return fmt.Sprintf("%s/%s", s.baseURL, norm), nil
 }
 
 func (s *LocalStorage) Exists(ctx context.Context, path string) (bool, error) {
